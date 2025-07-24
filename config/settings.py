@@ -1,0 +1,6 @@
+ASSEMBLYAI_API_KEY = "bca91d701a1046498686e2907f7b14c8"
+LIVEKIT_URL = "ws://localhost:7880"
+LIVEKIT_API_KEY = "devkey"
+LIVEKIT_API_SECRET = "secret"
+LIVEKIT_ROOM = "test-room"
+LIVEKIT_USERNAME = "test-user"
