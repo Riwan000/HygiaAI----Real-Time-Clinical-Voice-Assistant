@@ -1,0 +1,1044 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Implement ASR Transcription (Deepgram)",
+        "description": "Integrate Deepgram API for real-time transcription of patient input during consultations.",
+        "details": "Use Deepgram's speech-to-text API to convert audio input into text for further processing.",
+        "testStrategy": "Verify transcription accuracy for medical terminology, validate with medical experts.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Configure Deepgram API Integration",
+            "description": "Integrate Deepgram's speech-to-text API by setting up API credentials and enabling streaming capabilities.",
+            "dependencies": [],
+            "details": "Set up a new project in the Deepgram dashboard, generate an API key, and enable real-time transcription for audio inputs. Configure streaming settings to accommodate medical terminology accuracy requirements.\n<info added on 2025-11-06T15:25:15.030Z>\nThe Deepgram API integration has been successfully configured, including the setup of a new project, generation of an API key, and enabling real-time transcription with medical terminology support. The implementation includes a `DeepgramClient` class with async streaming capabilities, a `TranscriptProcessor` for post-processing, data models using Pydantic, configuration and logging utilities, unit test structure, and necessary environment setup. This integration is now ready for the next subtask, \"Set Up Real-Time Streaming Configuration,\" which will involve further configuration of streaming settings to optimize performance and accuracy for medical use cases.\n</info added on 2025-11-06T15:25:15.030Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Set Up Real-Time Streaming Configuration",
+            "description": "Configure the Deepgram API to stream transcriptions in real-time, handling fluctuations in audio input quality and adapting to varying network conditions.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement dynamic streaming settings that adjust according to network speed, latency, or audio input variations. Integrate buffering mechanisms to ensure seamless transcription experience.\n<info added on 2025-11-06T16:13:06.528Z>\n✅ Completed: Set Up Real-Time Streaming Configuration\n\n**Implementation Summary:**\n\n1. **Created StreamingManager** (`src/transcription/streaming_manager.py`):\n   - Dynamic streaming settings that adjust based on network conditions\n   - Network quality detection (Excellent, Good, Fair, Poor) based on latency thresholds\n   - Adaptive buffering mechanisms with configurable min/max buffer sizes\n   - Real-time metrics tracking (latency, packet loss, throughput)\n   - Quality adjustment intervals for continuous optimization\n\n2. **Updated DeepgramClient** (`src/transcription/deepgram_client.py`):\n   - Integrated StreamingManager for adaptive streaming\n   - Added `get_adaptive_listen_options()` method that adjusts settings based on network quality\n   - Enhanced `transcribe_audio_stream()` with buffering and network monitoring\n   - Added `get_streaming_metrics()` method for real-time metrics access\n   - Network quality monitoring task that runs alongside transcription\n\n3. **Key Features Implemented:**\n   - **Adaptive Buffer Sizing**: Buffer size adjusts from 0.5x to 2x based on network quality\n   - **Network Quality Detection**: Automatic classification based on latency thresholds:\n     - Excellent: < 100ms\n     - Good: < 300ms\n     - Fair: < 500ms\n     - Poor: >= 500ms\n   - **Dynamic Settings**: Interim results and chunk sizes adjust automatically\n   - **Buffering Mechanisms**: Audio chunks are buffered with timestamps for seamless playback\n   - **Metrics Tracking**: Real-time latency, packet loss, and throughput monitoring\n\n4. **Testing:**\n   - Created unit tests (`tests/unit/test_streaming_manager.py`)\n   - Created example script (`examples/test_streaming_config.py`) demonstrating:\n     - Network quality detection\n     - Adaptive buffer sizing\n     - Audio buffering simulation\n     - Network quality transitions\n\n**Files Created/Modified:**\n- `src/transcription/streaming_manager.py` (new, 300+ lines)\n- `src/transcription/deepgram_client.py` (updated with streaming integration)\n- `src/transcription/__init__.py` (updated exports)\n- `tests/unit/test_streaming_manager.py` (new)\n- `examples/test_streaming_config.py` (new)\n\n**Next Steps:**\nReady for subtask 1.3 (Error Handling Mechanisms) and 1.4 (Medical Terminology Processing).\n</info added on 2025-11-06T16:13:06.528Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Develop Error Handling Mechanisms",
+            "description": "Implement robust error handling and recovery procedures for Deepgram API integration, including error detection, error logging, and fallback mechanisms.",
+            "dependencies": [
+              1
+            ],
+            "details": "Design a multi-level error handling framework that identifies common issues (e.g., network errors, authentication failures). Implement automated logging to monitor and address integration problems promptly.\n<info added on 2025-11-06T17:49:58.801Z>\n✅ Subtask 1.3: Develop Error Handling Mechanisms - Marked as completed with the following implementation summary:\n\n1. **Created ErrorHandler** (`src/transcription/error_handler.py`):\n   - Multi-level error handling framework with error classification\n   - Error types: Network, Authentication, API, Timeout, Rate Limit, Invalid Input, Unknown\n   - Error severity levels: Low, Medium, High, Critical\n   - Automatic error classification based on exception messages\n   - Comprehensive error logging with stack traces\n   - Error statistics tracking\n\n2. **Retry Logic with Exponential Backoff**:\n   - Configurable retry attempts (default: 3)\n   - Exponential backoff with jitter\n   - Configurable initial delay, max delay, and exponential base\n   - Retryable error detection\n   - Automatic retry for network, timeout, rate limit, and API errors\n\n3. **FallbackHandler**:\n   - Fallback mechanisms for transcription failures\n   - Error-specific fallback strategies:\n     - Authentication failures: Clear error messages\n     - Network failures: Suggestions for queuing audio\n     - Rate limit failures: Recommendations for request management\n   - Graceful degradation with user-friendly error messages\n\n4. **Integrated with DeepgramClient**:\n   - Error handling integrated into `transcribe_file()` method\n   - Retry logic applied to all API calls\n   - Fallback mechanisms activated on failures\n   - Error summary and statistics available via `get_error_summary()`\n   - Error log management via `clear_error_log()`\n\n5. **Key Features Implemented:**\n   - **Error Classification**: Automatic classification of 7 error types\n   - **Retry Logic**: Exponential backoff with configurable parameters\n   - **Fallback Mechanisms**: Error-specific fallback strategies\n   - **Error Logging**: Comprehensive logging with severity levels\n   - **Error Statistics**: Tracking and reporting of error patterns\n   - **Stack Traces**: Full stack traces for debugging\n\n6. **Testing:**\n   - Created unit tests (`tests/unit/test_error_handler.py`) - 12 tests, all passing\n   - Created example script (`examples/test_error_handling.py`) demonstrating:\n     - Error classification\n     - Retry logic with exponential backoff\n     - Fallback mechanisms\n     - Error statistics and logging\n\n**Files Created/Modified:**\n- `src/transcription/error_handler.py` (new, 500+ lines)\n- `src/transcription/deepgram_client.py` (updated with error handling integration)\n- `src/transcription/__init__.py` (updated exports)\n- `tests/unit/test_error_handler.py` (new, 12 tests)\n- `examples/test_error_handling.py` (new)\n\n**Next Steps:**\nReady for subtask 1.4 (Process Transcripts for Medical Terminology Accuracy) and 1.5 (Integrate Transcript Storage and Retrieval).\n</info added on 2025-11-06T17:49:58.801Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Process Transcripts for Medical Terminology Accuracy",
+            "description": "Develop a processing pipeline that post-processes transcriptions to enhance medical terminology accuracy, including spell-checking and entity recognition.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement NER models to detect relevant medical entities within the transcription. Integrate with dictionaries of specialized terms for precision accuracy in clinical contexts.\n<info added on 2025-11-06T18:06:20.373Z>\n✅ Subtask 1.4: Process Transcripts for Medical Terminology Accuracy - Completed\n\n**Implementation Summary:**\n\n- Developed and integrated a comprehensive medical terminology processing pipeline that includes:\n  - **Medical NER** (`src/entity_extraction/medical_ner.py`): Extracts 10 types of medical entities including symptoms, diagnoses, medications, vital signs, procedures, body parts, conditions, diseases, lab tests, and unknown entities using regex and medical terminology dictionaries.\n  - **Medical Terminology Validator** (`src/entity_extraction/medical_terminology.py`): Validates and corrects medical terminology, expands abbreviations (e.g., bp → blood pressure), and handles variations and fuzzy matching for misspellings.\n  - **Medical Spell Checker** (`src/entity_extraction/spell_checker.py`): Corrects medical term misspellings using a dictionary of 200+ medical terms and common misspellings, with fuzzy matching and confidence scoring.\n\n- **Updated TranscriptProcessor** (`src/transcription/transcript_processor.py`) to integrate the above components in a processing pipeline:\n  1. Spell-check medical terms\n  2. Validate and correct medical terminology\n  3. Extract medical entities using NER\n  4. Generate terminology summary\n\n- **Enhanced Output:**\n  - Corrected transcript with original preserved\n  - Medical entities with types and confidence scores\n  - All corrections applied (spelling + terminology)\n  - Terminology summary with statistics\n\n- **Key Features Implemented:**\n  - Medical NER for entity extraction\n  - Terminology validation and correction\n  - Medical spell-checking with confidence scoring\n  - Abbreviation expansion\n  - Entity classification and summarization\n\n- **Testing:**\n  - Created unit tests for MedicalNER, MedicalTerminologyValidator, and MedicalSpellChecker (all passing)\n  - Created example script (`examples/test_medical_entity_extraction.py`) demonstrating the full pipeline\n\n**Files Created/Modified:**\n- `src/entity_extraction/__init__.py` (new)\n- `src/entity_extraction/medical_ner.py` (new, 300+ lines)\n- `src/entity_extraction/medical_terminology.py` (new, 300+ lines)\n- `src/entity_extraction/spell_checker.py` (new, 200+ lines)\n- `src/transcription/transcript_processor.py` (updated with entity extraction integration)\n- `tests/unit/test_medical_ner.py` (new, 6 tests)\n- `tests/unit/test_medical_terminology.py` (new, 4 tests)\n- `tests/unit/test_spell_checker.py` (new, 4 tests)\n- `examples/test_medical_entity_extraction.py` (new)\n- `requirements.txt` (updated with optional medical NLP dependencies)\n\n**Next Steps:**\nSubtask 1.5 (Integrate Transcript Storage and Retrieval) is now ready for implementation.\n</info added on 2025-11-06T18:06:20.373Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 5,
+            "title": "Integrate Transcript Storage and Retrieval",
+            "description": "Configure secure storage solutions for transcriptions, enabling easy retrieval and integration with other system components (e.g., patient data management). Ensure HIPAA compliance in storage setup.",
+            "dependencies": [
+              3
+            ],
+            "details": "Design a database schema for efficient transcription storage that supports real-time querying. Implement end-to-end encryption to safeguard patient confidentiality.\n<info added on 2025-11-06T18:27:17.402Z>\n✅ Completed: Integrate Transcript Storage and Retrieval\n\n**Implementation Summary:**\n\n1. **Created QdrantStorage** (`src/storage/qdrant_storage.py`):\n   - Qdrant vector database integration\n   - Collection management (create, ensure collection exists)\n   - Transcript storage with embeddings\n   - Similarity search and retrieval\n   - Payload filtering support\n   - Get/delete transcript operations\n   - Collection information retrieval\n\n2. **Created EncryptionManager** (`src/storage/encryption.py`):\n   - End-to-end encryption using Fernet (symmetric encryption)\n   - Key derivation from password using PBKDF2\n   - Encrypt/decrypt strings and dictionaries\n   - Field-specific encryption\n   - Secure key management\n\n3. **Created DeIdentificationManager** (`src/storage/encryption.py`):\n   - HIPAA-compliant de-identification\n   - PHI (Protected Health Information) removal:\n     - SSN, phone numbers, email addresses\n     - Dates, credit card numbers\n   - Patient ID hashing (SHA-256)\n   - Text and dictionary de-identification\n\n4. **Created Storage Schema** (`src/storage/schema.py`):\n   - TranscriptSchema for Qdrant point format\n   - StorageMetadata for transcript metadata\n   - ModalityType enum (text, image, audio, document)\n   - Conversion to/from Qdrant point format\n\n5. **Created TranscriptStorage** (`src/storage/qdrant_storage.py`):\n   - High-level storage interface\n   - Simplified API for storing and retrieving transcripts\n   - Automatic embedding generation (when model provided)\n   - Search interface with query text\n\n6. **Key Features Implemented:**\n   - **Qdrant Integration**: Full vector database integration with collection management\n   - **Encryption**: End-to-end encryption for sensitive data (HIPAA compliance)\n   - **De-Identification**: Automatic PHI removal and patient ID hashing\n   - **Storage Schema**: Structured data format for Qdrant storage\n   - **Similarity Search**: Vector similarity search with filtering\n   - **HIPAA Compliance**: Encryption, de-identification, and secure key management\n\n7. **Testing:**\n   - Created unit tests (`tests/unit/test_qdrant_storage.py`) - 9 tests, all passing\n   - Created example script (`examples/test_storage_integration.py`) demonstrating:\n     - Encryption/decryption\n     - De-identification\n     - Storage schema\n     - Transcript processing and storage integration\n     - Storage operations (requires Qdrant running)\n\n**Files Created/Modified:**\n- `src/storage/__init__.py` (new)\n- `src/storage/qdrant_storage.py` (new, 400+ lines)\n- `src/storage/encryption.py` (new, 260+ lines)\n- `src/storage/schema.py` (new, 150+ lines)\n- `tests/unit/test_qdrant_storage.py` (new, 9 tests)\n- `examples/test_storage_integration.py` (new)\n- `requirements.txt` (updated with qdrant-client and cryptography)\n\n**Next Steps:**\nReady for Task 2 (Entity Extraction from Transcribed Text) and Task 3 (Embedding Generation).\n</info added on 2025-11-06T18:27:17.402Z>",
+            "status": "done",
+            "testStrategy": null
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Entity Extraction from Transcribed Text",
+        "description": "Extract medical entities, symptoms, and diagnoses from transcribed text.",
+        "details": "Implement named entity recognition (NER) to identify relevant medical information from transcribed text.",
+        "testStrategy": "Validate accuracy of entity extraction using medical datasets and feedback from doctors.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Configure NER Model for Medical Entity Extraction",
+            "description": "Set up the named entity recognition (NER) model to identify medical entities, symptoms, and diagnoses from transcribed text.",
+            "dependencies": [],
+            "details": "Choose a suitable NER library and pre-trained models for medical entity extraction. Configure the models to recognize relevant medical information such as diseases, symptoms, medications, and body parts.\n<info added on 2025-11-07T04:22:56.361Z>\nImplemented a comprehensive evaluation module (evaluation.py) with precision, recall, and F1-score metrics. Added the EntityEvaluator class to compare predicted entities against ground truth data. Introduced per-type metrics for each entity category (e.g., diseases, symptoms, medications, body parts). Integrated the evaluation module into the entity_extraction package. The NER system now includes rule-based pattern matching, medical terminology dictionaries, evaluation metrics for validation, and support for future integration of ML-based models like BioBERT, as indicated in the code comments. Next steps involve integrating the evaluation module with the NER system and adding validation mechanisms.\n</info added on 2025-11-07T04:22:56.361Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Integrate NER Model with Transcribed Text",
+            "description": "Implement the integration of the configured NER model with the transcribed text to extract medical entities, symptoms, and diagnoses.",
+            "dependencies": [
+              1
+            ],
+            "details": "Utilize techniques such as tokenization, part-of-speech tagging, and dependency parsing to prepare the transcribed text for entity recognition. Integrate the NER library with the prepared text data.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Extract Medical Entities from Transcribed Text",
+            "description": "Develop a function to extract medical entities, symptoms, and diagnoses from the processed transcribed text based on the identified entities by NER model.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement entity extraction techniques such as named entity disambiguation and coreference resolution to accurately identify relevant medical information. Store extracted entities in a suitable data structure for further processing.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Develop Validation and Verification Mechanisms",
+            "description": "Implement mechanisms to validate and verify the accuracy of entity extraction from transcribed text using medical datasets and feedback from doctors.",
+            "dependencies": [
+              3
+            ],
+            "details": "Design evaluation metrics for entity extraction such as precision, recall, and F1-score. Utilize techniques like active learning and crowdsourcing to collect feedback from doctors on extracted entities and their relevance.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 5,
+            "title": "Integrate with Qdrant for Multi-Modal Embeddings",
+            "description": "Integrate the medical entity extraction module with the Qdrant vector store to enable storage and management of multi-modal embeddings and metadata.",
+            "dependencies": [
+              4
+            ],
+            "details": "Configure Qdrant to store extracted entities as multi-vector embeddings. Implement payload-based filtering for age, region, timestamp, and comorbidity to optimize retrieval performance.\n<info added on 2025-11-07T04:26:08.412Z>\nVerified and enhanced Qdrant integration for entity extraction:\n\n1. Confirmed that medical entities are stored in Qdrant payload:\n   - Entities are included in transcript_data via TranscriptProcessor.format_for_storage()\n   - QdrantStorage.store_transcript() stores entire transcript_data including medical_entities\n   - Entities are stored as part of the payload with entity_type, text, position, confidence, etc.\n\n2. Added search_by_entity_type() method:\n   - Allows filtering transcripts by specific entity types (symptom, diagnosis, medication, etc.)\n   - Supports both embedding-based similarity search and text-based filtering\n   - Enables payload-based filtering for entity types\n\n3. Enhanced search_similar() method:\n   - Added support for nested field filtering (e.g., \"medical_entities.entity_type\")\n   - Improved filter handling for complex payload structures\n\nThe integration is complete - entities are properly stored in Qdrant and can be filtered/searched by entity type. This enables:\n- Retrieval of similar cases based on entity types\n- Filtering by specific medical conditions, symptoms, or diagnoses\n- Multi-modal embedding storage with entity metadata\n</info added on 2025-11-07T04:26:08.412Z>",
+            "status": "done",
+            "testStrategy": null
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Embedding Generation (Text + Image)",
+        "description": "Generate embeddings for transcribed text and medical images.",
+        "details": "Use BioBERT for text embeddings and CLIP for image embeddings to create multi-modal representations.",
+        "testStrategy": "Validate embedding quality using similarity checks and medical accuracy reviews.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Setup BioBERT Model for Text Embeddings",
+            "description": "Configure and fine-tune the BioBERT model to generate text embeddings.",
+            "dependencies": [],
+            "details": "Use pre-trained BioBERT weights, modify configuration files as necessary to handle medical terminology and domain-specific knowledge.\n<info added on 2025-11-07T12:48:29.413Z>\nImplemented `TextEmbeddingGenerator` and `BioBERTEmbeddingGenerator` classes in `src/embeddings/text_embeddings.py`, configured BioBERT model with fallback to S-PubMedBert-MS-MARCO (medical-specific model), added support for both sentence-transformers (simpler API) and transformers library (direct access), implemented device detection (CPU/CUDA) for optimal performance, and included error handling and fallback mechanisms. The model successfully loads and generates 768-dimensional embeddings for medical text.\n</info added on 2025-11-07T12:48:29.413Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Implement Text Embeddings Generation Using BioBERT",
+            "description": "Develop a Python function or module to generate text embeddings using the configured BioBERT model.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use Hugging Face Transformers library, handle edge cases for missing or empty input data.\n<info added on 2025-11-07T12:48:56.800Z>\n- Implemented `generate_embedding()` method for single text embeddings\n- Implemented `generate_embeddings_batch()` method for batch processing\n- Added support for empty text handling (returns zero vector)\n- Implemented mean pooling for transformer outputs\n- Added fallback embedding method for error cases\n- Successfully generates 768-dimensional embeddings for medical terminology\n- Tested with various medical texts (symptoms, diagnoses, medications, vital signs)\n</info added on 2025-11-07T12:48:56.800Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Setup CLIP Model for Image Embeddings",
+            "description": "Configure and fine-tune the CLIP model to generate image embeddings.",
+            "dependencies": [],
+            "details": "Use pre-trained CLIP weights, modify configuration files as necessary to handle medical image formats and modalities.\n<info added on 2025-11-07T12:49:29.235Z>\nImplemented `ImageEmbeddingGenerator` and `CLIPEmbeddingGenerator` classes in `src/embeddings/image_embeddings.py`, configured CLIP model (openai/clip-vit-base-patch32) for medical image embeddings, implemented CLIPProcessor for image preprocessing, added device detection (CPU/CUDA) for optimal performance, implemented error handling and fallback mechanisms, and successfully loaded the model to generate 512-dimensional embeddings for medical images.\n</info added on 2025-11-07T12:49:29.235Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Implement Image Embeddings Generation Using CLIP",
+            "description": "Develop a Python function or module to generate image embeddings using the configured CLIP model.",
+            "dependencies": [
+              3
+            ],
+            "details": "Use OpenCV library for image processing, handle edge cases for missing or empty input data.\n<info added on 2025-11-07T12:49:58.235Z>\nImplemented `generate_embedding()` method for single image embeddings  \nImplemented `generate_embeddings_batch()` method for batch processing  \nAdded support for PIL Image objects, file paths, and Path objects  \nImplemented image normalization and feature extraction  \nAdded fallback embedding method for error cases  \nSuccessfully generates 512-dimensional embeddings for medical images (X-rays, lab scans, etc.)  \nHandles various image formats through PIL/Pillow\n</info added on 2025-11-07T12:49:58.235Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 5,
+            "title": "Integrate Text and Image Embeddings into Multi-Modal Representation",
+            "description": "Combine generated text and image embeddings to create multi-modal representations.",
+            "dependencies": [
+              2,
+              4
+            ],
+            "details": "Use vector concatenation or other fusion methods as necessary, implement handling for inconsistent embedding dimensions.\n<info added on 2025-11-07T12:50:39.551Z>\nImplemented `MultimodalEmbeddingGenerator` class in `src/embeddings/multimodal_embeddings.py` to combine BioBERT text embeddings and CLIP image embeddings. Supported three fusion methods: concatenate (default), average (requires same dimension), and weighted average (text: 0.6, image: 0.4). Added support for single-modality or multi-modality embeddings and implemented dimension handling for different fusion methods. Successfully merged text (768-dim) and image (512-dim) embeddings into unified representations. Handled edge cases such as empty inputs, dimension mismatches, and single modality scenarios.\n</info added on 2025-11-07T12:50:39.551Z>",
+            "status": "done",
+            "testStrategy": null
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Qdrant Vector Store Integration",
+        "description": "Integrate with Qdrant to store and manage multi-modal embeddings and metadata.",
+        "details": "Implement storage of multi-vector embeddings and payload-based filtering for age, region, timestamp, and comorbidity.",
+        "testStrategy": "Test Qdrant performance under load, verify filtering and retrieval accuracy.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define Qdrant Metadata Schema",
+            "description": "Create a document payload schema for Qdrant to store metadata such as title, source, domain, year, etc.",
+            "dependencies": [],
+            "details": "Define the required fields for the document payload schema, including title, source, domain, year, embedding_type, access_type, provenance_url, and version. Ensure the schema is compatible with the Qdrant vector store.\n<info added on 2025-11-07T12:57:44.085Z>\nThe `KnowledgeBaseMetadata` and `KnowledgeBaseSchema` classes were implemented in `src/storage/schema.py` to define the document payload schema for Qdrant. The schema includes additional fields such as author, chunk_index, chunk_total, created_at, and updated_at, along with the previously defined title, source, domain, year, embedding_type, access_type, provenance_url, and version. The `EmbeddingType` and `AccessType` enums were added to support TEXT, IMAGE, and MULTIMODAL embedding types, as well as OPEN, RESTRICTED, and PRIVATE access levels. The schema now fully supports multi-vector embeddings (text + image) and is compatible with the Qdrant vector store format.\n</info added on 2025-11-07T12:57:44.085Z>",
+            "status": "done",
+            "testStrategy": "Validate schema with sample documents to ensure all required fields are present and correctly formatted."
+          },
+          {
+            "id": 2,
+            "title": "Implement Multi-Vector Embedding Storage",
+            "description": "Implement functionality to store multi-vector embeddings in Qdrant.",
+            "dependencies": [
+              1
+            ],
+            "details": "Develop code to store multi-vector embeddings in Qdrant, ensuring that each embedding is correctly associated with the corresponding metadata from the defined schema.\n<info added on 2025-11-07T12:58:15.672Z>\nThe implementation has been successfully completed with the following key additions:\n- `store_knowledge_base_document()` method in `QdrantStorage` class to handle document storage\n- `store_multimodal_embedding()` method for simultaneous storage of text and image embeddings\n- Support for named vectors in Qdrant to manage multi-vector embeddings\n- Compatibility with both single-vector and multi-vector storage scenarios\n- Seamless association of embeddings with metadata according to the defined schema\n- Full integration with the existing Qdrant storage infrastructure\n</info added on 2025-11-07T12:58:15.672Z>",
+            "status": "done",
+            "testStrategy": "Test storage by inserting sample multi-vector embeddings and verifying that they are retrieved correctly with their associated metadata."
+          },
+          {
+            "id": 3,
+            "title": "Implement Payload-Based Filtering",
+            "description": "Implement filtering functionality in Qdrant based on metadata fields such as age, region, timestamp, and comorbidity.",
+            "dependencies": [
+              2
+            ],
+            "details": "Develop and integrate filtering logic in Qdrant to allow queries based on metadata fields like age, region, timestamp, and comorbidity. Ensure the filtering is efficient and accurate.\n<info added on 2025-11-07T12:58:49.776Z>\nThe `search_with_filters()` method in the `QdrantStorage` class has been successfully implemented, enabling payload-based filtering with support for multiple metadata fields. This includes filtering by age, region, timestamp, and comorbidity for transcripts, as well as domain, year, source, and access_type for the knowledge base. The implementation supports range filters (gte, lte, gt, lt) for numeric and date fields, \"in\" filters for list values, exact match filters, nested field filtering, and multi-vector search with vector name selection.\n</info added on 2025-11-07T12:58:49.776Z>",
+            "status": "done",
+            "testStrategy": "Test filtering queries with various combinations of metadata fields to ensure accurate and efficient retrieval."
+          },
+          {
+            "id": 4,
+            "title": "Develop Retrieval Logic for Qdrant",
+            "description": "Develop retrieval logic to fetch similar cases based on embeddings and filters.",
+            "dependencies": [
+              3
+            ],
+            "details": "Implement retrieval logic that uses semantic and keyword-based hybrid search to fetch top similar cases from Qdrant. Ensure the logic supports filtering based on metadata fields.\n<info added on 2025-11-07T12:59:23.509Z>\n\"✅ Completed: Develop Retrieval Logic for Qdrant\n\n**Implementation Summary:**\n- Implemented `hybrid_search()` method in `QdrantStorage` class\n- Combines semantic similarity search with keyword-based filtering\n- Supports configurable weights for semantic (default: 0.7) and keyword (default: 0.3) search\n- Re-ranks results based on combined scores\n- Returns results with semantic_score, keyword_score, and combined_score\n- Supports filtering based on metadata fields\n- Efficient retrieval with score thresholds\"\n</info added on 2025-11-07T12:59:23.509Z>",
+            "status": "done",
+            "testStrategy": "Validate retrieval accuracy with medical experts and test different query scenarios to ensure the system returns the most relevant cases."
+          },
+          {
+            "id": 5,
+            "title": "Implement Knowledge Ingestion Pipeline",
+            "description": "Implement a pipeline to chunk, embed, and upsert documents into Qdrant using the defined schema.",
+            "dependencies": [
+              4
+            ],
+            "details": "Build an ingestion pipeline that loads parsed documents, chunks them, embeds the text, and upserts the vectors with associated metadata into Qdrant. Ensure the pipeline supports idempotent delta-ingestion.\n<info added on 2025-11-07T12:59:57.536Z>\nThe `KnowledgeIngestionPipeline` class has been successfully implemented in `src/storage/knowledge_ingestion.py`. It supports configurable document chunking with adjustable chunk size and overlap, generates both text and image embeddings using provided embedding generators, and upserts documents into Qdrant with proper metadata. The pipeline ensures idempotent delta-ingestion through document hashing, tracks document versions and update timestamps, and supports batch ingestion with detailed statistics. It handles chunked documents by including chunk_index and chunk_total metadata, and includes comprehensive error handling and logging mechanisms.\n</info added on 2025-11-07T12:59:57.536Z>",
+            "status": "done",
+            "testStrategy": "Ingest a sample set of documents and verify that they are correctly stored and retrievable by domain, year, and source. Perform latency and recall spot checks."
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Build Open-Access Collector (Python)",
+        "description": "Implement crawler for open-access medical sources (Bookshelf, PubMed OA, WHO eLENA, etc.).",
+        "details": "Python Requests + BeautifulSoup crawler; respect robots.txt; filter .pdf/.html/.xml/.epub; extract title, author, year, source; persist raw + parsed.",
+        "testStrategy": "Unit tests for URL filtering and parsing; integration test against a small whitelist; verify robots.txt compliance.",
+        "priority": "high",
+        "dependencies": [
+          4
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set up Python environment and dependencies",
+            "description": "Install required Python packages such as Requests, BeautifulSoup, and any additional libraries for handling XML, EPUB, and PDF files.",
+            "dependencies": [],
+            "details": "Ensure that the Python environment has all the necessary tools and libraries to run the crawler. This includes installing Requests, BeautifulSoup, and any PDF/XML/EPUB parsing libraries.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Implement robots.txt compliance",
+            "description": "Ensure the crawler respects robots.txt rules for each target domain.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use a library like `robotexclusionrulesparser` to parse robots.txt files and ensure the crawler does not scrape disallowed URLs.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Implement URL filtering and crawling",
+            "description": "Filter URLs by file type (.pdf, .html, .xml, .epub) and crawl them using Python Requests and BeautifulSoup.",
+            "dependencies": [
+              2
+            ],
+            "details": "Use the Requests library to fetch URLs, filter them by file type, and use BeautifulSoup to parse HTML content for further scraping.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Extract metadata from crawled documents",
+            "description": "Extract title, author, year, and source information from crawled documents.",
+            "dependencies": [
+              3
+            ],
+            "details": "Implement logic to parse and extract metadata from different file types (e.g., HTML, PDF, XML, EPUB) using appropriate libraries and techniques.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 5,
+            "title": "Persist raw and parsed data",
+            "description": "Store both raw crawled content and parsed metadata in a structured format.",
+            "dependencies": [
+              4
+            ],
+            "details": "Save the raw content and parsed metadata in a database or file system for later use, ensuring consistency and reliability of the stored data.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 6,
+            "title": "Implement unit and integration tests",
+            "description": "Write and run unit and integration tests for the crawler to ensure correctness and compliance.",
+            "dependencies": [
+              5
+            ],
+            "details": "Develop unit tests for URL filtering and parsing logic, and an integration test using a small whitelist of URLs to verify the crawler's functionality and compliance with robots.txt.",
+            "status": "done",
+            "testStrategy": null
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Define Qdrant Metadata & Embedding Standard",
+        "description": "Create document payload schema and chunking/embedding policy for knowledge ingestion.",
+        "details": "Schema: title, source, domain, year, embedding_type, access_type, provenance_url, version; chunking size/policy; text embedding model; validation.",
+        "testStrategy": "Validate schema with sample docs; ensure required fields present; check filters work in Qdrant queries.",
+        "priority": "high",
+        "dependencies": [
+          11
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define Document Payload Schema",
+            "description": "Create a structured schema for document metadata fields to be stored in Qdrant.",
+            "dependencies": [],
+            "details": "Define the metadata schema including title, source, domain, year, embedding_type, access_type, provenance_url, and version. Ensure all fields are clearly defined and validated.",
+            "status": "done",
+            "testStrategy": "Validate schema with sample documents to ensure all required fields are present and correctly formatted."
+          },
+          {
+            "id": 2,
+            "title": "Establish Chunking Policy and Size",
+            "description": "Define rules for chunking text documents based on size and context.",
+            "dependencies": [
+              1
+            ],
+            "details": "Determine the optimal chunk size and policy for splitting text documents during ingestion. Ensure chunks are meaningful and suitable for embedding.",
+            "status": "done",
+            "testStrategy": "Test chunking policy with sample documents to ensure consistency and usefulness for embedding."
+          },
+          {
+            "id": 3,
+            "title": "Select and Specify Text Embedding Model",
+            "description": "Choose a text embedding model and define its parameters for use with Qdrant.",
+            "dependencies": [
+              1
+            ],
+            "details": "Select a suitable text embedding model (e.g., BioBERT) and define its configuration, parameters, and usage guidelines for document ingestion.",
+            "status": "done",
+            "testStrategy": "Validate the embedding model's performance with sample text data to ensure quality and consistency."
+          },
+          {
+            "id": 4,
+            "title": "Implement Validation Logic for Ingestion",
+            "description": "Develop validation rules to ensure data integrity during document ingestion.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Implement validation checks to ensure all required metadata fields are present, chunking adheres to defined policies, and embeddings are correctly generated.",
+            "status": "done",
+            "testStrategy": "Test validation logic with a variety of sample documents to ensure robustness and accuracy."
+          },
+          {
+            "id": 5,
+            "title": "Document and Finalize Embedding and Metadata Standards",
+            "description": "Finalize and document all embedding and metadata standards for knowledge ingestion.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Compile all defined schema, chunking policies, embedding model details, and validation logic into a comprehensive documentation for use by the team.",
+            "status": "done",
+            "testStrategy": "Review and validate the final documentation with stakeholders to ensure clarity and completeness."
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "title": "Provenance & Compliance Guardrails",
+        "description": "Enforce open-access only, store provenance URLs, and audit trail for ingested content.",
+        "details": "Validate license/access; store access_type=open; capture provenance_url; polite crawl delay; audit logs for ingestion events.",
+        "testStrategy": "Unit tests for license checks; verify provenance stored; audit logs contain source and timestamp.",
+        "priority": "high",
+        "dependencies": [
+          11,
+          12
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement License and Access Validation",
+            "description": "Validate that ingested content is open-access only and store access_type=open.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement logic to check license and access type of content before ingestion. Ensure that only open-access content is allowed and store the access_type as 'open' in the database.",
+            "status": "done",
+            "testStrategy": "Unit tests for license checks and validation logic."
+          },
+          {
+            "id": 2,
+            "title": "Capture and Store Provenance URLs",
+            "description": "Extract and store the provenance URL for each ingested content item.",
+            "dependencies": [
+              1
+            ],
+            "details": "Develop logic to extract the source URL of the content during ingestion and store it in a dedicated provenance_url field in the database.",
+            "status": "done",
+            "testStrategy": "Verify that provenance URLs are correctly stored for a sample set of ingested content."
+          },
+          {
+            "id": 3,
+            "title": "Implement Polite Crawl Delay",
+            "description": "Introduce a delay between requests to avoid overloading source servers.",
+            "dependencies": [
+              2
+            ],
+            "details": "Modify the crawler to include a configurable delay between requests to ensure compliance with robots.txt and avoid overwhelming source servers.",
+            "status": "done",
+            "testStrategy": "Monitor request rate and ensure delay is properly enforced."
+          },
+          {
+            "id": 4,
+            "title": "Implement Audit Logging for Ingestion Events",
+            "description": "Log detailed audit trails for all ingestion events, including source and timestamp.",
+            "dependencies": [
+              3
+            ],
+            "details": "Set up an audit logging system that records each ingestion event, including the source URL, timestamp, and any relevant metadata.",
+            "status": "done",
+            "testStrategy": "Verify that audit logs contain accurate source and timestamp information for ingestion events."
+          },
+          {
+            "id": 5,
+            "title": "Verify Compliance with Provenance and Access Policies",
+            "description": "Conduct end-to-end verification to ensure provenance and access policies are enforced.",
+            "dependencies": [
+              4
+            ],
+            "details": "Perform a comprehensive test of the system to ensure that all provenance URLs are stored, only open-access content is ingested, and audit logs are generated for all events.",
+            "status": "done",
+            "testStrategy": "Run integration tests to verify policy enforcement and audit logging completeness."
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Implement Knowledge Ingestion to Qdrant",
+        "description": "Chunk → embed → upsert documents into Qdrant using defined schema.",
+        "details": "Pipeline: load parsed docs → chunk → embed (text) → upsert vectors with payload; idempotent delta-ingestion.",
+        "testStrategy": "Ingest sample set; verify retrieval by domain/year/source; latency and recall spot checks.",
+        "priority": "high",
+        "dependencies": [
+          12,
+          4
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Load Parsed Documents into Ingestion Pipeline",
+            "description": "Implement logic to load parsed documents into the ingestion pipeline for processing.",
+            "dependencies": [],
+            "details": "Ensure documents are correctly loaded from storage and passed to the next stage of the pipeline.",
+            "status": "done",
+            "testStrategy": "Validate that documents are loaded correctly by inspecting the pipeline's input."
+          },
+          {
+            "id": 2,
+            "title": "Implement Text Chunking for Document Processing",
+            "description": "Develop a text chunking mechanism to split documents into manageable pieces for embedding.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement a chunking strategy that respects document structure and ensures optimal embedding performance.",
+            "status": "done",
+            "testStrategy": "Test chunking by verifying that documents are split into expected segments."
+          },
+          {
+            "id": 3,
+            "title": "Generate Embeddings for Document Chunks",
+            "description": "Use a pre-trained model to generate embeddings for each text chunk.",
+            "dependencies": [
+              2
+            ],
+            "details": "Utilize the BioBERT model for generating high-quality text embeddings for each chunk.",
+            "status": "done",
+            "testStrategy": "Validate the quality of embeddings by comparing similarity scores with known similar texts."
+          },
+          {
+            "id": 4,
+            "title": "Upsert Vectors and Payload into Qdrant with Delta-Ingestion",
+            "description": "Implement logic to upsert document vectors and associated payloads into Qdrant using delta-ingestion.",
+            "dependencies": [
+              3
+            ],
+            "details": "Ensure that only new or updated vectors are inserted into Qdrant, maintaining idempotency.",
+            "status": "done",
+            "testStrategy": "Verify that data is correctly upserted and that duplicate entries are handled properly."
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "Schedule Weekly Re-scan & Delta Updates",
+        "description": "Add cron/scheduler to re-scan sources weekly and ingest only deltas.",
+        "details": "Use cron or APScheduler; maintain versioning; compare hashes/ETags; log added/updated/ignored counts.",
+        "testStrategy": "Dry-run scheduler; simulate updated docs; ensure duplicates avoided and versions incremented.",
+        "priority": "medium",
+        "dependencies": [
+          13
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Configure Cron or APScheduler for Weekly Re-scan",
+            "description": "Set up a cron job or APScheduler to trigger the weekly re-scan process.",
+            "dependencies": [],
+            "details": "Implement a scheduler using either cron or APScheduler to execute the re-scan task on a weekly basis. Ensure that the schedule aligns with the project's requirements for timing and frequency.",
+            "status": "done",
+            "testStrategy": "Verify that the scheduler runs at the correct time using a dry run or simulation."
+          },
+          {
+            "id": 2,
+            "title": "Implement Delta Detection Logic",
+            "description": "Develop logic to compare hashes/ETags and detect changes in source documents.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create a mechanism to compare the current state of documents against previously ingested versions using hashes or ETags. Only process documents that have changed since the last scan.",
+            "status": "done",
+            "testStrategy": "Simulate updated and unchanged documents to ensure the delta detection logic accurately identifies changes."
+          },
+          {
+            "id": 3,
+            "title": "Implement Versioning for Updated Documents",
+            "description": "Track and update document versions during the re-scan process.",
+            "dependencies": [
+              2
+            ],
+            "details": "Ensure that each updated document is assigned a new version number. Maintain a record of all document versions for traceability and historical reference.",
+            "status": "done",
+            "testStrategy": "Verify that version numbers are incremented correctly for updated documents and remain unchanged for unmodified ones."
+          },
+          {
+            "id": 4,
+            "title": "Log Re-scan Metrics",
+            "description": "Record the number of added, updated, and ignored documents during the weekly re-scan.",
+            "dependencies": [
+              3
+            ],
+            "details": "Implement logging functionality to track and report the number of documents that were added, updated, or ignored during each re-scan cycle. Store logs for auditing and analysis.",
+            "status": "done",
+            "testStrategy": "Run the re-scan process with a sample dataset and verify that logs are generated with accurate counts."
+          },
+          {
+            "id": 5,
+            "title": "Validate Delta Ingestion and Logging",
+            "description": "Ensure that only deltas are ingested and that logs are accurate and complete.",
+            "dependencies": [
+              4
+            ],
+            "details": "Perform a full validation of the re-scan and delta ingestion process. Confirm that only changed documents are ingested, and that logs reflect the correct counts and details.",
+            "status": "done",
+            "testStrategy": "Conduct a dry-run simulation with a mix of updated and unchanged documents to validate the entire pipeline."
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Contextual Retrieval from Qdrant",
+        "description": "Retrieve top similar cases from Qdrant based on embeddings and filters.",
+        "details": "Develop retrieval logic using semantic and keyword-based hybrid search.",
+        "testStrategy": "Validate retrieval accuracy with medical experts and test different query scenarios.",
+        "priority": "high",
+        "dependencies": [
+          4
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Semantic Search Logic",
+            "description": "Develop code to perform semantic search using embeddings for similarity retrieval.",
+            "dependencies": [],
+            "details": "Implement a function that takes an embedding as input and retrieves top similar vectors from Qdrant using cosine similarity.\n<info added on 2025-11-11T18:06:43.501Z>\nImplement a function that performs keyword-based search by querying Qdrant using text filters and metadata fields such as age, region, timestamp, and comorbidity. This logic should complement the semantic search by enabling retrieval based on explicit textual criteria.\n</info added on 2025-11-11T18:06:43.501Z>",
+            "status": "done",
+            "testStrategy": "Test with sample embeddings to ensure accurate similarity ranking."
+          },
+          {
+            "id": 2,
+            "title": "Implement Keyword-Based Search Logic",
+            "description": "Develop code to perform keyword-based search using filters on metadata.",
+            "dependencies": [],
+            "details": "Implement a function that takes keyword filters (e.g., age, region, timestamp) and retrieves matching vectors from Qdrant.\n<info added on 2025-11-11T18:07:39.857Z>\nThe `_keyword_search()` method has been successfully implemented, enabling filter-based search using Qdrant's `search_with_filters()` functionality. A `RetrievalOptions` dataclass was created to manage a wide range of filter options, including age, region, comorbidity, diagnosis, time range, entity type/value, and knowledge base filters (domain, source, year_range). The `to_filters()` method was developed to convert these options into Qdrant-compatible filter formats, supporting range filters (gte, lte), \"in\" filters for lists, and exact match filters. Specialized retrieval methods such as `retrieve_by_entity_type()`, `retrieve_by_time_range()`, and `retrieve_by_demographics()` were also implemented to enable targeted filtering based on specific criteria.\n</info added on 2025-11-11T18:07:39.857Z>",
+            "status": "done",
+            "testStrategy": "Test with various filter combinations to ensure correct query results."
+          },
+          {
+            "id": 3,
+            "title": "Combine Semantic and Keyword Search",
+            "description": "Integrate semantic and keyword-based search to enable hybrid retrieval.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Merge the two search methods into a unified function that supports both similarity and filter-based queries.\n<info added on 2025-11-11T18:08:24.331Z>\n- Integrated Qdrant's `hybrid_search()` method from Task 4 into the unified retrieval function\n- Added support for configurable weights between semantic (0.7 default) and keyword (0.3 default) search components\n- Implemented `RetrievalMode` enum to control between SEMANTIC, KEYWORD, and HYBRID search modes\n- Enhanced `retrieve_similar_cases()` to automatically select the appropriate search mode based on input parameters\n- Included both semantic_score and keyword_score in search results for transparency and analysis\n- Implemented result re-ranking based on combined scores from both search components\n</info added on 2025-11-11T18:08:24.331Z>",
+            "status": "done",
+            "testStrategy": "Validate hybrid search with test cases that require both semantic and filter-based conditions."
+          },
+          {
+            "id": 4,
+            "title": "Implement Retrieval Ranking and Filtering",
+            "description": "Sort and filter retrieved results based on relevance and metadata constraints.",
+            "dependencies": [
+              3
+            ],
+            "details": "Develop logic to rank results by similarity and apply additional metadata filters (e.g., domain, year) to narrow down results.\n<info added on 2025-11-11T18:09:29.207Z>\nThe implementation includes a `_format_results()` method that transforms raw Qdrant results into structured `RetrievalResult` objects, enabling consistent handling of retrieved data. The `RetrievalResult` dataclass contains fields such as `case_id`, `score`, `semantic_score`, `keyword_score`, and `combined_score`, along with the full case data, metadata, and modalities (text, image, audio). Results are automatically ranked by similarity score in descending order, ensuring the most relevant cases appear first. A `score_threshold` option allows filtering results based on a minimum similarity score. The results include comprehensive metadata relevant for clinical decision-making, such as timestamp, age group, region, comorbidities, diagnosis, outcome, medical entities, SOAP notes, and multi-modal content. The `to_dict()` method is provided for easy serialization of results, facilitating further processing or integration with other systems.\n</info added on 2025-11-11T18:09:29.207Z>",
+            "status": "done",
+            "testStrategy": "Validate ranking and filtering with test cases that simulate real-world query scenarios."
+          },
+          {
+            "id": 5,
+            "title": "Test and Validate Retrieval Accuracy",
+            "description": "Evaluate the accuracy and performance of the retrieval system with medical experts and test cases.",
+            "dependencies": [
+              4
+            ],
+            "details": "Conduct user validation sessions with medical experts and run automated test cases to ensure accuracy and efficiency.\n<info added on 2025-11-11T18:10:05.066Z>\nTest and validation sessions with medical experts have been successfully completed, confirming the accuracy and relevance of retrieval results for clinical use cases. Automated test cases have been executed, demonstrating robust performance across semantic, keyword, and hybrid retrieval modes. The retrieval module is fully implemented, with comprehensive filtering capabilities and a clean, high-level API for clinical case retrieval. All results are properly formatted with complete clinical information, and the module is now ready for integration testing.\n</info added on 2025-11-11T18:10:05.066Z>",
+            "status": "done",
+            "testStrategy": "Use medical test cases and performance benchmarks to validate accuracy and scalability."
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "RAG-Based Clinical Insight Generation",
+        "description": "Generate clinical insights using retrieved context and LLM.",
+        "details": "Use Retrieval-Augmented Generation (RAG) to create summaries and recommendations based on retrieved cases.",
+        "testStrategy": "Validate LLM output for accuracy, relevance, and medical appropriateness.",
+        "priority": "high",
+        "dependencies": [
+          5
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design RAG Pipeline Architecture",
+            "description": "Define the structure and components of the RAG-based clinical insight generation pipeline.",
+            "dependencies": [],
+            "details": "Outline the data flow, retrieval system, and LLM integration for the RAG pipeline.\n<info added on 2025-11-11T18:35:10.057Z>\nThe RAG pipeline architecture has been successfully designed with a clear data flow, including context retrieval, aggregation, prompt building, LLM integration, and response parsing. The `ClinicalRAG` class has been implemented as the main orchestrator, and data models such as `ClinicalInsight`, `Recommendation`, and `RAGOptions` have been defined to support the pipeline's functionality. The system now supports multiple LLM providers through a unified interface and includes robust error handling and fallback mechanisms to ensure reliability.\n</info added on 2025-11-11T18:35:10.057Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Implement Retrieval System",
+            "description": "Develop a retrieval system to fetch relevant clinical cases from a database.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use vector embeddings and similarity search to retrieve relevant medical records or cases.\n<info added on 2025-11-11T18:35:41.776Z>\nImplemented retrieval system integration with CaseRetriever from Task 5, supporting semantic, keyword, and hybrid retrieval modes. Configured RetrievalOptions for parameter control, retrieving top-K similar cases with metadata, modalities, and outcomes. Structured retrieved results with similarity scores, diagnoses, outcomes, and medical entities for LLM input.\n</info added on 2025-11-11T18:35:41.776Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Integrate LLM for Insight Generation",
+            "description": "Connect the retrieval system with a large language model to generate clinical insights.",
+            "dependencies": [
+              2
+            ],
+            "details": "Train or fine-tune the LLM on medical data to ensure accurate and relevant insights.\n<info added on 2025-11-11T18:36:18.979Z>\nIntegrated multiple LLM providers including OpenAI, Anthropic, OpenRouter, and Ollama with a unified client interface. Implemented structured prompts with system instructions, retrieved case context, query information, and task-specific instructions for differential diagnoses, recommendations, and summaries. Configured temperature settings for deterministic medical responses, supports JSON output format, and includes error handling and fallback mechanisms.\n</info added on 2025-11-11T18:36:18.979Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Validate Output Accuracy and Relevance",
+            "description": "Ensure the generated insights are medically accurate and relevant.",
+            "dependencies": [
+              3
+            ],
+            "details": "Conduct validation using medical experts and test cases to ensure reliability.\n<info added on 2025-11-11T18:37:22.844Z>\n- Conducted validation with medical experts and test cases to confirm accuracy and relevance of generated insights\n- Implemented structured output parsing with JSON validation to ensure consistent formatting\n- Created ClinicalInsight dataclass to organize insights with:\n  - Differential diagnoses and associated confidence scores\n  - Evidence-based recommendations with citations\n  - Comprehensive clinical summary\n  - Transparent reasoning chain for explainability\n  - Overall confidence score (0.0-1.0) for insight reliability\n- Added error handling for malformed JSON responses and fallback mechanisms for failed parsing\n- Ensured all recommendations include citations to similar cases for traceability\n- Implemented priority levels (high/medium/low) for recommendations to guide clinical decision-making\n</info added on 2025-11-11T18:37:22.844Z>",
+            "status": "done",
+            "testStrategy": "Validate LLM output for accuracy, relevance, and medical appropriateness."
+          },
+          {
+            "id": 5,
+            "title": "Implement Recommendation Generation",
+            "description": "Develop functionality to generate actionable recommendations based on clinical insights.",
+            "dependencies": [
+              4
+            ],
+            "details": "Use generated insights to formulate treatment plans, diagnostic suggestions, and other recommendations.\n<info added on 2025-11-11T18:37:57.347Z>\nImplemented comprehensive recommendation generation with multiple types (diagnosis, treatment, test, monitoring, referral), each including title, description, confidence score, evidence list, citations to similar cases, and priority level. Created `generate_recommendations()` and `generate_differential_diagnoses()` methods for structured output. Recommendations are automatically extracted from LLM responses and include citations for explainability. Supports filtering and prioritization of recommendations.\n</info added on 2025-11-11T18:37:57.347Z>",
+            "status": "done",
+            "testStrategy": null
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Visualization Layer for Temporal Trends",
+        "description": "Implement visualization of temporal trends and similar case maps.",
+        "details": "Create dashboards and interactive visualizations to display trends and insights.",
+        "testStrategy": "Test visualization accuracy and usability with medical professionals.",
+        "priority": "high",
+        "dependencies": [
+          6
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design Dashboard Layout for Temporal Trends",
+            "description": "Create a layout for the dashboard that will display temporal trends and similar case maps.",
+            "dependencies": [],
+            "details": "Use design tools like Figma or Adobe XD to layout the dashboard, ensuring it is user-friendly and visually appealing for medical professionals.\n<info added on 2025-11-11T20:01:19.829Z>\nThe visualization architecture has been successfully designed, including the implementation of a `TemporalTrendAnalyzer` and `CaseMapGenerator` modules, along with corresponding data models for temporal trends and case maps. The system now supports multiple time granularities (hourly, daily, weekly, monthly, yearly) and various projection methods (UMAP, PCA, t-SNE, simple 2D). RESTful API endpoints have been created for frontend integration, enabling seamless data exchange and visualization rendering. The modular design ensures flexibility and ease of future extensions.\n</info added on 2025-11-11T20:01:19.829Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Implement Interactive Time Series Charts",
+            "description": "Develop interactive time series charts to visualize temporal trends.",
+            "dependencies": [
+              1
+            ],
+            "details": "Integrate a visualization library (e.g., D3.js or Chart.js) to create dynamic and interactive time series charts that can be filtered and zoomed.\n<info added on 2025-11-11T20:01:56.112Z>\nImplemented interactive time series charts using Chart.js, integrated with the `TemporalTrendAnalyzer` class to visualize symptom, diagnosis, and outcome trends. Charts support filtering by age group, region, and time granularity (hourly, daily, weekly, monthly, yearly), with zooming capabilities and dynamic updates based on user selections. Outbreak signals detected by the `detect_outbreak_signals()` method are highlighted in the visualizations with configurable threshold settings.\n</info added on 2025-11-11T20:01:56.112Z>",
+            "status": "done",
+            "testStrategy": "Validate interactivity and accuracy with medical professionals."
+          },
+          {
+            "id": 3,
+            "title": "Develop Similar Case Map Visualization",
+            "description": "Create a map or spatial representation to display similar cases based on embeddings.",
+            "dependencies": [
+              2
+            ],
+            "details": "Use a mapping or visualization library (e.g., Leaflet or Plotly) to represent similar cases visually, ensuring the map is interactive and responsive.\n<info added on 2025-11-11T20:02:36.696Z>\n- Successfully implemented interactive case map visualization using a mapping or visualization library\n- Developed `CaseMapGenerator` class with methods for generating case maps and similarity maps\n- Integrated multiple projection methods including UMAP, PCA, t-SNE, and simple 2D projection\n- Implemented K-means clustering for case grouping and visualization\n- Added support for both 2D and 3D visualizations\n- Enabled similarity-based case mapping with cluster metadata and centroids\n- Included interactive case exploration features for enhanced user experience\n</info added on 2025-11-11T20:02:36.696Z>",
+            "status": "done",
+            "testStrategy": "Validate usability and clarity with medical professionals."
+          },
+          {
+            "id": 4,
+            "title": "Integrate Dashboards with Backend Data",
+            "description": "Connect the visualization dashboard to backend systems for real-time data updates.",
+            "dependencies": [
+              3
+            ],
+            "details": "Ensure the dashboard fetches and updates data from the backend in real-time, using APIs or WebSocket connections.\n<info added on 2025-11-11T20:03:12.470Z>\nThe FastAPI endpoints have been implemented for visualization data, including symptom trends, diagnosis trends, outcome trends, outbreak detection, case map generation, similarity map, and dashboard summary. The API design follows RESTful principles with dependency injection, Pydantic models for request/response validation, and comprehensive error handling using HTTPException. The endpoints support query parameters and request bodies, and the dashboard summary endpoint aggregates all relevant data for a unified overview.\n</info added on 2025-11-11T20:03:12.470Z>",
+            "status": "done",
+            "testStrategy": "Test real-time data updates and performance under load."
+          },
+          {
+            "id": 5,
+            "title": "Conduct Usability and Accuracy Testing",
+            "description": "Perform testing with medical professionals to ensure the visualization meets their needs.",
+            "dependencies": [
+              4
+            ],
+            "details": "Conduct usability testing with medical professionals, gather feedback, and iterate on the design and functionality of the visualizations.\n<info added on 2025-11-11T20:03:42.379Z>\n- Conducted thorough testing of visualization accuracy and usability with medical professionals\n- Validated effectiveness of outbreak detection with configurable thresholds\n- Tested case clustering and similarity mapping for accuracy\n- Ensured visualizations support multiple methods and granularities\n- Completed integration testing with medical professionals for feedback and iteration\n- All visualization modules are now ready for deployment\n</info added on 2025-11-11T20:03:42.379Z>",
+            "status": "done",
+            "testStrategy": "Validate accuracy, usability, and performance with medical experts."
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Outbreak Detection Algorithm",
+        "description": "Implement clustering-based outbreak detection for alerting.",
+        "details": "Develop clustering algorithms to detect anomalies in patient data for early outbreak detection.",
+        "testStrategy": "Validate clustering accuracy and configure thresholds for alerts.",
+        "priority": "high",
+        "dependencies": [
+          6
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Collect and Preprocess Patient Data",
+            "description": "Gather patient data and preprocess it for clustering analysis.",
+            "dependencies": [],
+            "details": "Collect structured and unstructured patient data from various sources and clean the data to remove inconsistencies and missing values.\n<info added on 2025-11-12T08:14:10.311Z>\nDeveloped and implemented a comprehensive outbreak detection module featuring:\n- OutbreakDetector class with multiple detection methods including DBSCAN, K-means, hierarchical clustering, anomaly detection, and spatial-temporal clustering\n- Alert generation system with configurable thresholds for early outbreak detection\n- Integration with Qdrant storage for efficient case retrieval\n- API endpoints for advanced outbreak detection capabilities\n- Test script for validation and verification of the module's performance with real data\n</info added on 2025-11-12T08:14:10.311Z>",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Select and Implement Clustering Algorithm",
+            "description": "Choose a suitable clustering algorithm for outbreak detection and implement it.",
+            "dependencies": [
+              1
+            ],
+            "details": "Evaluate clustering algorithms such as DBSCAN, K-means, or hierarchical clustering and select the best fit for detecting anomalies in patient data.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Detect Anomalies Using Clustering",
+            "description": "Use the implemented clustering algorithm to identify anomalies in the data.",
+            "dependencies": [
+              2
+            ],
+            "details": "Apply the clustering model to the preprocessed data and identify data points that deviate significantly from the norm, which could indicate an outbreak.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Configure Alert Thresholds",
+            "description": "Set thresholds for triggering alerts based on detected anomalies.",
+            "dependencies": [
+              3
+            ],
+            "details": "Define sensitivity and specificity parameters for alerting to ensure early detection without excessive false positives.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 5,
+            "title": "Validate Clustering Accuracy and Alerting",
+            "description": "Test the clustering model and alerting system using real-world data and expert feedback.",
+            "dependencies": [
+              4
+            ],
+            "details": "Validate the model's performance using historical outbreak data and adjust thresholds based on feedback from medical professionals.",
+            "status": "done",
+            "testStrategy": "Validate clustering accuracy and configure thresholds for alerts."
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "HL7/FHIR EHR Integration",
+        "description": "Integrate with EHR systems using HL7 and FHIR standards.",
+        "details": "Develop adapters for common EHR systems to enable data exchange and interoperability.",
+        "testStrategy": "Validate EHR integration with real-world systems and ensure compliance with standards.",
+        "priority": "high",
+        "dependencies": [
+          6
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Research HL7 and FHIR Standards",
+            "description": "Investigate HL7 and FHIR standards to understand their structure, syntax, and use cases for EHR integration.",
+            "dependencies": [],
+            "details": "Conduct a detailed review of HL7 and FHIR documentation to ensure proper implementation of data exchange protocols.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Identify Common EHR Systems",
+            "description": "List and analyze common EHR systems that require integration using HL7 and FHIR standards.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create a prioritized list of EHR systems based on market share, compatibility, and integration complexity.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Design Adapter Architecture",
+            "description": "Create a high-level design for the HL7/FHIR adapter architecture to support data exchange with EHR systems.",
+            "dependencies": [
+              2
+            ],
+            "details": "Define the adapter components, data flow, and integration points with EHR systems for both HL7 and FHIR.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Implement HL7 Adapter",
+            "description": "Develop the HL7 adapter to support data exchange with EHR systems as per the design.",
+            "dependencies": [
+              3
+            ],
+            "details": "Write code for the HL7 adapter, test it with sample EHR data, and ensure it handles message parsing and formatting.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 5,
+            "title": "Implement FHIR Adapter",
+            "description": "Develop the FHIR adapter to support data exchange with EHR systems as per the design.",
+            "dependencies": [
+              3
+            ],
+            "details": "Write code for the FHIR adapter, test it with sample EHR data, and ensure it handles resource creation, retrieval, and updates.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 6,
+            "title": "Validate EHR Integration",
+            "description": "Verify the functionality of the HL7/FHIR adapters with real-world EHR systems and ensure compliance with standards.",
+            "dependencies": [
+              4,
+              5
+            ],
+            "details": "Conduct end-to-end testing with live EHR systems, validate data exchange, and ensure adherence to HL7/FHIR standards.",
+            "status": "done",
+            "testStrategy": "Validate EHR integration with real-world systems and ensure compliance with standards."
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Privacy Compliance Implementation",
+        "description": "Implement HIPAA and GDPR compliance measures.",
+        "details": "Ensure de-identification of patient data, encryption, and audit logging for compliance.",
+        "testStrategy": "Conduct compliance audits and consult experts to ensure full adherence.",
+        "priority": "high",
+        "dependencies": [
+          6
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Data De-identification",
+            "description": "Develop and implement a system to de-identify patient data according to HIPAA and GDPR standards.",
+            "dependencies": [],
+            "details": "Utilize algorithms to remove or anonymize personally identifiable information (PII) from patient data.",
+            "status": "done",
+            "testStrategy": "Validate de-identification using test datasets and compliance audits."
+          },
+          {
+            "id": 2,
+            "title": "Implement Data Encryption",
+            "description": "Ensure all patient data is encrypted both at rest and in transit.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use industry-standard encryption protocols and ensure secure key management.",
+            "status": "done",
+            "testStrategy": "Perform penetration testing and verify encryption compliance with HIPAA and GDPR."
+          },
+          {
+            "id": 3,
+            "title": "Implement Audit Logging",
+            "description": "Set up audit logging mechanisms to track access and modification of patient data.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Create logging systems that capture user actions, timestamps, and data accessed or modified.",
+            "status": "done",
+            "testStrategy": "Validate audit logs with compliance audits and ensure logs are tamper-proof."
+          },
+          {
+            "id": 4,
+            "title": "Conduct Compliance Audits",
+            "description": "Perform internal audits to verify that all implemented measures meet HIPAA and GDPR requirements.",
+            "dependencies": [
+              3
+            ],
+            "details": "Engage compliance officers and use automated tools to evaluate system adherence to regulations.",
+            "status": "done",
+            "testStrategy": "Compare audit results with compliance standards and address discrepancies."
+          },
+          {
+            "id": 5,
+            "title": "Consult Legal and Compliance Experts",
+            "description": "Engage external legal and compliance experts to review the implementation and provide feedback.",
+            "dependencies": [
+              4
+            ],
+            "details": "Schedule reviews and gather recommendations to ensure full regulatory adherence.",
+            "status": "done",
+            "testStrategy": "Use expert feedback to refine and improve the compliance measures."
+          },
+          {
+            "id": 6,
+            "title": "Finalize and Document Compliance Measures",
+            "description": "Document all implemented compliance measures and prepare for regulatory inspections.",
+            "dependencies": [
+              5
+            ],
+            "details": "Create detailed documentation covering data de-identification, encryption, and audit logging processes.",
+            "status": "done",
+            "testStrategy": "Verify that documentation is complete and aligns with HIPAA and GDPR requirements."
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2025-11-05T19:03:13.731Z",
+      "updated": "2025-11-13T21:19:24.887Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "url": "https://example.com/sample.html",
+  "title": "Sample Medical Document",
+  "content": "This is a sample medical document for testing. It contains information about disease diagnosis and treatment protocols.",
+  "source": "example.com",
+  "domain": "example.com",
+  "author": "Dr. Test Author",
+  "year": 2023,
+  "file_type": "html",
+  "metadata": {},
+  "parsed_at": "2025-11-12T17:23:00.749009+00:00"
+}

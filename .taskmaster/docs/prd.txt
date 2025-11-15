@@ -1,0 +1,1228 @@
+<rpg-method>
+# Repository Planning Graph (RPG) Method - PRD Template
+
+This template teaches you (AI or human) how to create structured, dependency-aware PRDs using the RPG methodology from Microsoft Research. The key insight: separate WHAT (functional) from HOW (structural), then connect them with explicit dependencies.
+
+## Core Principles
+
+1. **Dual-Semantics**: Think functional (capabilities) AND structural (code organization) separately, then map them
+2. **Explicit Dependencies**: Never assume - always state what depends on what
+3. **Topological Order**: Build foundation first, then layers on top
+4. **Progressive Refinement**: Start broad, refine iteratively
+
+## How to Use This Template
+
+- Follow the instructions in each `<instruction>` block
+- Look at `<example>` blocks to see good vs bad patterns
+- Fill in the content sections with your project details
+- The AI reading this will learn the RPG method by following along
+- Task Master will parse the resulting PRD into dependency-aware tasks
+</rpg-method>
+
+---
+
+<overview>
+<instruction>
+Start with the problem, not the solution. Be specific about:
+- What pain point exists?
+- Who experiences it?
+- Why existing solutions don't work?
+- What success looks like (measurable outcomes)?
+
+Keep this section focused - don't jump into implementation details yet.
+</instruction>
+
+# 🧠 HygiaAI: Qdrant-Powered Clinical Memory System (Combined PRD)
+
+## Problem Statement
+
+In low-resource clinics, doctors lack centralized access to prior patient cases or institutional memory. Critical data — past conversations, medical images, test results — often remain fragmented or lost. This leads to repeated misdiagnoses, inefficient follow-ups, and preventable errors. HygiaAI solves this by remembering every clinical encounter, embedding it semantically, and enabling retrieval of the most relevant prior cases in seconds.
+
+**Tagline**: "An AI Clinical Memory System powered by Qdrant — enabling doctors to recall, reason, and recommend smarter decisions using past patient data."
+
+## Target Users
+
+**Primary Users**: Doctors and healthcare workers in low-resource clinical environments (rural clinics, underserved areas)
+
+**User Workflows**:
+- Doctors need to recall similar past cases during patient consultations
+- Healthcare workers need to access historical medical images and transcripts
+- Clinics need to identify emerging health patterns and outbreaks
+- Medical staff require structured clinical notes (SOAP format) from conversations
+
+**What they're trying to achieve**:
+- Instant access to similar past cases for diagnostic support
+- Structured clinical documentation from audio conversations
+- Early detection of disease clusters and outbreaks
+- Better diagnostic accuracy through pattern recognition
+- Compliance with healthcare privacy standards (HIPAA/GDPR)
+
+## Success Metrics
+
+**Quantifiable Outcomes**:
+- **Retrieval Accuracy**: 80%+ of correct similar-case matches retrieved
+- **Latency**: Query response time < 300ms on local Qdrant
+- **Adaptation Rate**: 50+ new cases embedded per week in active clinics
+- **Outbreak Detection Precision**: 85%+ accuracy of anomaly clustering
+- **User Trust Score**: 4.0+/5.0 doctor feedback on retrieved case usefulness
+- **Diagnostic Error Reduction**: 15–25% reduction in diagnostic error rates at scale
+- **Transcription Accuracy**: 95%+ accuracy in medical entity extraction
+- **SOAP Note Generation**: < 2 seconds from transcript to structured SOAP format
+
+</overview>
+
+---
+
+<functional-decomposition>
+<instruction>
+Now think about CAPABILITIES (what the system DOES), not code structure yet.
+
+Step 1: Identify high-level capability domains
+Step 2: For each capability, enumerate specific features
+Step 3: For each feature, define Description, Inputs, Outputs, Behavior
+</instruction>
+
+## Capability Tree
+
+### Capability: Real-Time Medical Transcription
+Enables conversion of live doctor-patient audio into searchable text transcripts with medical context.
+
+#### Feature: Live Audio Transcription
+- **Description**: Converts live doctor–patient audio into text in real-time using Deepgram Universal Streaming
+- **Inputs**: Live audio stream (doctor-patient conversation), audio format metadata
+- **Outputs**: Real-time transcript text, timestamps, speaker identification
+- **Behavior**: Continuous audio processing, buffering for real-time output, error handling for audio quality issues
+
+#### Feature: Transcript Storage & Indexing
+- **Description**: Feeds transcripts into Qdrant as embeddings for semantic recall later
+- **Inputs**: Transcript text, session metadata, timestamps
+- **Outputs**: Stored transcript in Qdrant with vector embeddings, indexed for retrieval
+- **Behavior**: Generate text embeddings (BioBERT), store with payload metadata (modality: "text", timestamp, session_id), enable immediate search capability
+
+### Capability: Medical Entity Extraction & SOAP Summarization
+Automatically extracts structured medical information and generates clinical documentation.
+
+#### Feature: Medical Entity Extraction
+- **Description**: Automatically extracts key entities (symptoms, diagnosis, medication, vitals) from transcripts
+- **Inputs**: Transcript text, medical vocabulary/ontology
+- **Outputs**: Structured entities (symptoms list, diagnoses, medications, vital signs), confidence scores
+- **Behavior**: NER (Named Entity Recognition) using medical models, validation against medical ontologies, entity linking to standardized codes
+
+#### Feature: SOAP Note Generation
+- **Description**: Generates structured SOAP notes (Subjective, Objective, Assessment, Plan) instantly from transcripts
+- **Inputs**: Transcript text, extracted entities, patient metadata
+- **Outputs**: Structured SOAP note JSON/document, formatted clinical record
+- **Behavior**: Template-based generation, section classification (Subjective vs Objective), assessment reasoning, plan generation from extracted entities
+
+#### Feature: Data Storage & Vectorization
+- **Description**: Stores both raw and summarized data in the vector database
+- **Inputs**: Raw transcript, SOAP notes, extracted entities
+- **Outputs**: Multiple vector entries in Qdrant (raw text, SOAP summary, entity embeddings)
+- **Behavior**: Parallel embedding generation for different data views, payload enrichment with structured metadata
+
+### Capability: Clinical Memory & Similar Case Retrieval
+Core Qdrant-powered capability for storing and retrieving multimodal clinical case data.
+
+#### Feature: Multimodal Embedding Storage
+- **Description**: Stores multimodal embeddings (text, images, documents) in Qdrant with rich payloads
+- **Inputs**: Text transcripts, medical images (X-rays, lab scans), documents (test reports, prescriptions), metadata
+- **Outputs**: Vector points in Qdrant with multi-vector support (text + image + audio vectors per case)
+- **Behavior**: Generate embeddings per modality (BioBERT for text, CLIP for images, AudioCLIP for audio), create unified point ID per case, store with payload filters (age, region, timestamp, comorbidity)
+
+#### Feature: Similar Case Search
+- **Description**: Retrieves most similar past cases and outcomes when a new case comes in
+- **Inputs**: Query case (text/image/audio), similarity threshold, filter criteria (time range, age group, region)
+- **Outputs**: Top-K similar cases (default: top 5), similarity scores, case metadata, outcomes
+- **Behavior**: Multi-vector similarity search in Qdrant, apply payload filters (temporal, demographic), rank by cosine distance, return top matches with scores
+
+#### Feature: Temporal & Hybrid Filtering
+- **Description**: Time-aware retrieval using Qdrant payload filters (e.g., "similar pneumonia cases in the past 3 months")
+- **Inputs**: Query vector, time range filter, additional filters (age group, comorbidities, region)
+- **Outputs**: Filtered similar cases within specified constraints
+- **Behavior**: Build filter query with timestamp ranges, combine with semantic similarity, hybrid search (keyword + semantic), execute filtered search
+
+### Capability: RAG-based Clinical Insights
+Combines retrieved context with LLM reasoning for context-aware clinical recommendations.
+
+#### Feature: Context Retrieval & Aggregation
+- **Description**: Retrieves relevant context from Qdrant memory and aggregates for LLM input
+- **Inputs**: Query case, retrieval parameters (top-K, filters)
+- **Outputs**: Aggregated context (top similar cases, their outcomes, medical literature snippets)
+- **Behavior**: Execute similar case search, retrieve medical knowledge base entries, format context for LLM prompt
+
+#### Feature: LLM-based Clinical Reasoning
+- **Description**: Produces context-aware suggestions using LLM (BioGPT/MedPaLM) with grounded retrieval
+- **Inputs**: Aggregated context, query case details, LLM model
+- **Outputs**: Possible differential diagnoses, next steps/treatment options, relevant medical literature snippets, recommendation confidence scores
+- **Behavior**: Construct prompt with retrieved context, call LLM API, parse structured output (diagnoses, treatments, citations), generate explainable recommendations
+
+#### Feature: Explainable Recommendations
+- **Description**: Provides reasoning traces showing what influenced the recommendation
+- **Inputs**: LLM output, retrieved cases, similarity scores
+- **Outputs**: Structured recommendation with citations, similarity weights, reasoning chain
+- **Behavior**: Extract citations from LLM output, highlight top similar cases that influenced reasoning, display Qdrant similarity scores
+
+### Capability: Adaptive Learning Memory
+Continuous enrichment of the clinical memory system with new cases and patterns.
+
+#### Feature: Automatic Case Addition
+- **Description**: Automatically adds each new patient case (text/image/audio) to Qdrant memory
+- **Inputs**: New case data (transcript, images, audio), metadata, outcomes
+- **Outputs**: New vector points in Qdrant, updated memory index
+- **Behavior**: Generate embeddings for new case, create payload with metadata, upsert to Qdrant, update local memory index
+
+#### Feature: Pattern Learning & Evolution
+- **Description**: Learns evolving diagnostic patterns in local context (e.g., rural disease trends)
+- **Inputs**: Historical case data, temporal patterns, regional metadata
+- **Outputs**: Pattern insights, trend analysis, updated diagnostic models
+- **Behavior**: Periodic clustering analysis, trend detection over time windows, regional pattern identification, update recommendation weights
+
+#### Feature: Periodic Reindexing
+- **Description**: Periodic reindexing/clustering to improve recall speed and precision
+- **Inputs**: Complete Qdrant collection, reindexing schedule
+- **Outputs**: Optimized index, improved query performance
+- **Behavior**: Schedule periodic reindexing (weekly/monthly), optimize HNSW parameters, update cluster assignments, validate performance improvements
+
+### Capability: Multimodal Case Viewer
+Unified dashboard for doctors to explore retrieved similar cases visually.
+
+#### Feature: Case Retrieval Display
+- **Description**: Unified dashboard to view all retrieved similar cases (text notes, lab images, past treatment plans & outcomes)
+- **Inputs**: Retrieved similar cases from Qdrant, similarity scores
+- **Outputs**: Rendered dashboard with case cards, similarity rankings, metadata display
+- **Behavior**: Fetch case details from Qdrant, format for display, rank by similarity, render multimodal content (text, images, audio previews)
+
+#### Feature: Similarity Visualization
+- **Description**: Embedding-based similarity ranking (cosine distance from Qdrant) with visual indicators
+- **Inputs**: Similarity scores, case metadata
+- **Outputs**: Visual similarity indicators, ranking display, score explanations
+- **Behavior**: Map similarity scores to visual indicators (color coding, bar charts), explain why cases are similar, highlight key matching features
+
+#### Feature: Side-by-Side Case Comparison
+- **Description**: Side-by-side view of retrieved similar cases with highlighted symptom overlaps and diagnosis pathways
+- **Inputs**: Query case, retrieved similar cases
+- **Outputs**: Comparison view with highlighted overlaps, diagnosis pathway visualization
+- **Behavior**: Align cases side-by-side, highlight matching symptoms/entities, visualize diagnosis progression, show treatment outcome differences
+
+### Capability: Privacy & Compliance Layer
+Ensures HIPAA/GDPR compliance and data privacy protection.
+
+#### Feature: De-identification
+- **Description**: De-identification of patient data before embedding
+- **Inputs**: Raw patient data (transcripts, images, metadata)
+- **Outputs**: De-identified data (anonymized IDs, removed PII), mapping keys (for audit)
+- **Behavior**: Remove/replace PII (names, addresses, SSNs), generate anonymized patient IDs, maintain secure mapping (encrypted) for audit purposes, validate no PII in embeddings
+
+#### Feature: Local-First Deployment
+- **Description**: Local Qdrant deployment (no cloud data leak)
+- **Inputs**: Deployment configuration, data location preferences
+- **Outputs**: On-premise Qdrant instance, encrypted data storage
+- **Behavior**: Deploy Qdrant locally or on clinic server, encrypt data at rest, ensure no data transmission to external clouds, validate network isolation
+
+#### Feature: Audit Trail
+- **Description**: Audit trail for every AI recommendation
+- **Inputs**: All AI recommendations, user actions, system events
+- **Outputs**: Encrypted audit logs, compliance reports
+- **Behavior**: Log all recommendation requests with timestamps, store encrypted logs, generate compliance reports, enable audit log queries
+
+### Capability: Analytics & Pattern Discovery
+Transforms case data into actionable population health insights.
+
+#### Feature: Trend Analysis
+- **Description**: Trends in patient symptoms, prescriptions, outcomes over time
+- **Inputs**: Historical case data, temporal windows, aggregation criteria
+- **Outputs**: Trend reports, time-series visualizations, statistical summaries
+- **Behavior**: Aggregate cases by time windows, compute trends (symptom frequency, prescription patterns, outcome rates), generate visualizations, detect anomalies
+
+#### Feature: Outbreak Detection
+- **Description**: Identify emerging local health issues early (e.g., outbreak signals) via Qdrant clustering
+- **Inputs**: Recent case data, clustering parameters, threshold settings
+- **Outputs**: Outbreak alerts, cluster visualizations, risk assessments
+- **Behavior**: Clustering analysis on recent cases (last 1-2 weeks), detect density spikes in similar cases, trigger alerts for clusters above threshold, visualize outbreak clusters on map
+
+#### Feature: Pattern Discovery
+- **Description**: Qdrant enables clustering of similar cases for insight generation
+- **Inputs**: All case data, clustering algorithm parameters
+- **Outputs**: Case clusters, pattern insights, population health summaries
+- **Behavior**: Execute clustering on Qdrant embeddings, identify disease clusters, analyze cluster characteristics, generate insights on population health patterns
+
+### Capability: API & Agent Architecture
+Exposes REST/FastAPI layer for integration with EHRs and standalone clinic deployments.
+
+#### Feature: REST API Endpoints
+- **Description**: Exposes REST/FastAPI layer for transcription input, case retrieval, SOAP summary generation, and recommendations
+- **Inputs**: HTTP requests (POST/GET), request payloads (audio, case data, queries)
+- **Outputs**: HTTP responses (JSON), API documentation
+- **Behavior**: Define FastAPI routes, handle request validation, process requests, return structured JSON responses, provide OpenAPI/Swagger docs
+
+#### Feature: EHR Integration
+- **Description**: Pluggable with hospital EHRs or standalone for small clinics
+- **Inputs**: EHR system specifications, integration requirements
+- **Outputs**: Integration adapters, API connectors
+- **Behavior**: Design modular integration layer, create adapters for common EHR formats (HL7, FHIR), enable standalone mode for clinics without EHRs, validate data exchange
+
+#### Feature: Agent Orchestration
+- **Description**: Coordinates multiple capabilities (transcription, retrieval, RAG, analytics) via agent architecture
+- **Inputs**: User requests, agent configuration
+- **Outputs**: Orchestrated responses, multi-step workflows
+- **Behavior**: Route requests to appropriate agents, coordinate multi-agent workflows (transcribe → extract → retrieve → recommend), manage agent state, handle errors gracefully
+
+</functional-decomposition>
+
+---
+
+<structural-decomposition>
+<instruction>
+NOW think about code organization. Map capabilities to actual file/folder structure.
+</instruction>
+
+## Repository Structure
+
+```
+hygiaai-project/
+├── src/
+│   ├── transcription/          # Maps to: Real-Time Medical Transcription
+│   │   ├── deepgram_client.py
+│   │   ├── transcript_processor.py
+│   │   └── __init__.py
+│   ├── entity_extraction/       # Maps to: Medical Entity Extraction & SOAP
+│   │   ├── ner_extractor.py
+│   │   ├── soap_generator.py
+│   │   └── __init__.py
+│   ├── memory/                 # Maps to: Clinical Memory & Similar Case Retrieval
+│   │   ├── qdrant_client.py
+│   │   ├── embedding_service.py
+│   │   ├── retrieval_service.py
+│   │   └── __init__.py
+│   ├── rag/                    # Maps to: RAG-based Clinical Insights
+│   │   ├── context_retriever.py
+│   │   ├── llm_service.py
+│   │   ├── recommendation_engine.py
+│   │   └── __init__.py
+│   ├── learning/               # Maps to: Adaptive Learning Memory
+│   │   ├── case_ingestion.py
+│   │   ├── pattern_analyzer.py
+│   │   ├── reindexing_service.py
+│   │   └── __init__.py
+│   ├── viewer/                 # Maps to: Multimodal Case Viewer
+│   │   ├── case_display.py
+│   │   ├── similarity_viz.py
+│   │   ├── comparison_view.py
+│   │   └── __init__.py
+│   ├── privacy/                 # Maps to: Privacy & Compliance Layer
+│   │   ├── deidentification.py
+│   │   ├── encryption.py
+│   │   ├── audit_logger.py
+│   │   └── __init__.py
+│   ├── analytics/              # Maps to: Analytics & Pattern Discovery
+│   │   ├── trend_analyzer.py
+│   │   ├── outbreak_detector.py
+│   │   ├── clustering_service.py
+│   │   └── __init__.py
+│   ├── api/                     # Maps to: API & Agent Architecture
+│   │   ├── routes.py
+│   │   ├── agents.py
+│   │   ├── ehr_adapters.py
+│   │   └── __init__.py
+│   ├── models/                  # Shared data models
+│   │   ├── case_models.py
+│   │   ├── payload_models.py
+│   │   └── __init__.py
+│   ├── utils/                   # Shared utilities
+│   │   ├── config.py
+│   │   ├── logging.py
+│   │   └── __init__.py
+│   └── main.py                  # FastAPI application entry
+├── frontend/                     # React dashboard
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   └── App.jsx
+│   └── package.json
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+├── docs/
+└── docker/
+    ├── Dockerfile
+    └── docker-compose.yml
+```
+
+## Module Definitions
+
+### Module: transcription
+- **Maps to capability**: Real-Time Medical Transcription
+- **Responsibility**: Handle live audio transcription and transcript storage
+- **File structure**:
+  ```
+  transcription/
+  ├── deepgram_client.py      # Live audio transcription feature
+  ├── transcript_processor.py    # Transcript storage & indexing feature
+  └── __init__.py
+  ```
+- **Exports**:
+  - `transcribe_audio(audio_stream)` - Converts live audio to text
+  - `store_transcript(transcript, metadata)` - Stores transcript in Qdrant
+
+### Module: entity_extraction
+- **Maps to capability**: Medical Entity Extraction & SOAP Summarization
+- **Responsibility**: Extract medical entities and generate SOAP notes
+- **File structure**:
+  ```
+  entity_extraction/
+  ├── ner_extractor.py          # Medical entity extraction feature
+  ├── soap_generator.py          # SOAP note generation feature
+  └── __init__.py
+  ```
+- **Exports**:
+  - `extract_entities(transcript)` - Extracts medical entities
+  - `generate_soap(transcript, entities)` - Generates SOAP notes
+  - `store_structured_data(raw_data, soap_data)` - Stores in Qdrant
+
+### Module: memory
+- **Maps to capability**: Clinical Memory & Similar Case Retrieval
+- **Responsibility**: Qdrant vector storage and retrieval operations
+- **File structure**:
+  ```
+  memory/
+  ├── qdrant_client.py          # Qdrant connection & collection management
+  ├── embedding_service.py      # Multimodal embedding generation
+  ├── retrieval_service.py      # Similar case search & filtering
+  └── __init__.py
+  ```
+- **Exports**:
+  - `store_case(case_data, embeddings)` - Stores multimodal case in Qdrant
+  - `search_similar_cases(query, filters)` - Retrieves similar cases
+  - `hybrid_search(query, filters)` - Hybrid search with filters
+
+### Module: rag
+- **Maps to capability**: RAG-based Clinical Insights
+- **Responsibility**: Context retrieval and LLM-based clinical reasoning
+- **File structure**:
+  ```
+  rag/
+  ├── context_retriever.py      # Context retrieval & aggregation feature
+  ├── llm_service.py            # LLM-based clinical reasoning feature
+  ├── recommendation_engine.py  # Explainable recommendations feature
+  └── __init__.py
+  ```
+- **Exports**:
+  - `retrieve_context(query_case)` - Retrieves relevant context
+  - `generate_recommendations(context, query)` - LLM reasoning
+  - `explain_recommendation(recommendation, context)` - Adds explanations
+
+### Module: learning
+- **Maps to capability**: Adaptive Learning Memory
+- **Responsibility**: Continuous case addition and pattern learning
+- **File structure**:
+  ```
+  learning/
+  ├── case_ingestion.py         # Automatic case addition feature
+  ├── pattern_analyzer.py       # Pattern learning & evolution feature
+  ├── reindexing_service.py     # Periodic reindexing feature
+  └── __init__.py
+  ```
+- **Exports**:
+  - `add_case(case_data)` - Adds new case to memory
+  - `analyze_patterns()` - Detects patterns and trends
+  - `reindex_collection()` - Optimizes Qdrant index
+
+### Module: viewer
+- **Maps to capability**: Multimodal Case Viewer
+- **Responsibility**: Frontend dashboard and visualization components
+- **File structure**:
+  ```
+  viewer/
+  ├── case_display.py           # Case retrieval display feature
+  ├── similarity_viz.py         # Similarity visualization feature
+  ├── comparison_view.py        # Side-by-side comparison feature
+  └── __init__.py
+  ```
+- **Exports**:
+  - `display_cases(cases, scores)` - Renders case dashboard
+  - `visualize_similarity(scores)` - Creates similarity visualizations
+  - `compare_cases(case1, case2)` - Side-by-side comparison
+
+### Module: privacy
+- **Maps to capability**: Privacy & Compliance Layer
+- **Responsibility**: Data de-identification and compliance features
+- **File structure**:
+  ```
+  privacy/
+  ├── deidentification.py       # De-identification feature
+  ├── encryption.py            # Encryption utilities
+  ├── audit_logger.py          # Audit trail feature
+  └── __init__.py
+  ```
+- **Exports**:
+  - `deidentify(data)` - Removes PII from data
+  - `encrypt_payload(payload)` - Encrypts sensitive metadata
+  - `log_action(action, metadata)` - Creates audit log entry
+
+### Module: analytics
+- **Maps to capability**: Analytics & Pattern Discovery
+- **Responsibility**: Trend analysis and outbreak detection
+- **File structure**:
+  ```
+  analytics/
+  ├── trend_analyzer.py         # Trend analysis feature
+  ├── outbreak_detector.py      # Outbreak detection feature
+  ├── clustering_service.py     # Pattern discovery via clustering
+  └── __init__.py
+  ```
+- **Exports**:
+  - `analyze_trends(time_range)` - Computes trends over time
+  - `detect_outbreaks(recent_cases)` - Identifies outbreak clusters
+  - `discover_patterns()` - Clustering-based pattern discovery
+
+### Module: api
+- **Maps to capability**: API & Agent Architecture
+- **Responsibility**: REST API endpoints and agent orchestration
+- **File structure**:
+  ```
+  api/
+  ├── routes.py                 # REST API endpoints feature
+  ├── agents.py                 # Agent orchestration feature
+  ├── ehr_adapters.py           # EHR integration feature
+  └── __init__.py
+  ```
+- **Exports**:
+  - `create_app()` - FastAPI application factory
+  - `orchestrate_workflow(request)` - Coordinates agents
+  - `connect_ehr(ehr_type)` - EHR integration adapter
+
+</structural-decomposition>
+
+---
+
+<dependency-graph>
+<instruction>
+This is THE CRITICAL SECTION for Task Master parsing.
+Define explicit dependencies between modules.
+</instruction>
+
+## Dependency Chain
+
+### Foundation Layer (Phase 0)
+No dependencies - these are built first.
+
+- **models**: Provides shared data models (Case, Payload, etc.) used across all modules
+- **utils**: Provides configuration, logging, and shared utilities
+- **privacy**: Provides de-identification and encryption utilities (foundational for all data operations)
+
+### Data Processing Layer (Phase 1)
+- **transcription**: Depends on [models, utils, privacy]
+  - Needs models for data structures, utils for config/logging, privacy for de-identification
+- **entity_extraction**: Depends on [models, utils, privacy]
+  - Needs models, utils, and privacy for PII handling
+
+### Memory Layer (Phase 2)
+- **memory**: Depends on [models, utils, privacy]
+  - Core Qdrant operations, needs foundation modules
+- **embedding_service**: Depends on [memory, utils]
+  - Uses memory for storage, utils for configuration
+
+### Intelligence Layer (Phase 3)
+- **rag**: Depends on [memory, models, utils]
+  - Retrieves from memory, uses models for data structures
+- **learning**: Depends on [memory, models, utils]
+  - Operates on memory, uses models
+
+### Presentation Layer (Phase 4)
+- **viewer**: Depends on [memory, rag, models]
+  - Displays data from memory and RAG recommendations
+- **analytics**: Depends on [memory, models, utils]
+  - Analyzes data in memory
+
+### Integration Layer (Phase 5)
+- **api**: Depends on [transcription, entity_extraction, memory, rag, learning, viewer, analytics, models, utils]
+  - Orchestrates all capabilities via REST API
+
+</dependency-graph>
+
+---
+
+<implementation-roadmap>
+<instruction>
+Turn the dependency graph into concrete development phases.
+</instruction>
+
+## Development Phases
+
+### Phase 0: Foundation
+**Goal**: Establish core infrastructure (data models, utilities, privacy layer)
+
+**Entry Criteria**: Clean repository, Python environment set up
+
+**Tasks**:
+- [ ] Implement shared data models (Case, Payload, Metadata structures) (depends on: none)
+  - Acceptance criteria: Models support all modalities (text/image/audio), payload examples from PRD work
+  - Test strategy: Unit tests for model serialization/deserialization
+
+- [ ] Setup configuration system (Qdrant connection, API keys, embedding models) (depends on: none)
+  - Acceptance criteria: Config loads from env/yml, all services can access config
+  - Test strategy: Config validation tests
+
+- [ ] Implement privacy utilities (de-identification, encryption) (depends on: none)
+  - Acceptance criteria: PII removal works, encryption/decryption works, audit logging functional
+  - Test strategy: Unit tests with sample medical data
+
+**Exit Criteria**: All foundation modules can be imported without errors, unit tests pass
+
+**Delivers**: Developers can import models, use config, and apply privacy utilities
+
+---
+
+### Phase 1: Data Processing Pipeline
+**Goal**: Enable transcription and entity extraction from audio input
+
+**Entry Criteria**: Phase 0 complete
+
+**Tasks**:
+- [ ] Implement Deepgram transcription client (depends on: [models, utils, privacy])
+  - Acceptance criteria: Live audio transcription works, transcripts stored
+  - Test strategy: Mock Deepgram API, test transcript output
+
+- [ ] Implement medical entity extraction (depends on: [models, utils, privacy])
+  - Acceptance criteria: Extracts symptoms, diagnoses, medications, vitals with >90% accuracy
+  - Test strategy: Unit tests with sample transcripts, integration with NER models
+
+- [ ] Implement SOAP note generation (depends on: [entity_extraction])
+  - Acceptance criteria: Generates valid SOAP structure from transcripts in <2 seconds
+  - Test strategy: Validate SOAP structure, test with various transcript types
+
+**Exit Criteria**: End-to-end flow: audio → transcript → entities → SOAP note works
+
+**Delivers**: System can transcribe audio and generate structured clinical notes
+
+---
+
+### Phase 2: Memory System
+**Goal**: Enable Qdrant-based vector storage and retrieval
+
+**Entry Criteria**: Phase 1 complete
+
+**Tasks**:
+- [ ] Setup Qdrant client and collections (depends on: [models, utils])
+  - Acceptance criteria: Qdrant connection works, collections created with proper schema
+  - Test strategy: Integration tests with local Qdrant instance
+
+- [ ] Implement multimodal embedding generation (BioBERT, CLIP, AudioCLIP) (depends on: [memory, utils])
+  - Acceptance criteria: Text/image/audio embeddings generated, dimensions match Qdrant schema
+  - Test strategy: Unit tests for each embedding type, validate embedding quality
+
+- [ ] Implement case storage in Qdrant (depends on: [memory, embedding_service])
+  - Acceptance criteria: Cases stored with multi-vector support, payloads attached correctly
+  - Test strategy: Store test cases, verify retrieval
+
+- [ ] Implement similar case retrieval with filters (depends on: [memory])
+  - Acceptance criteria: Top-K similar cases retrieved, temporal/filter filters work, <300ms latency
+  - Test strategy: Integration tests with sample cases, validate similarity scores
+
+**Exit Criteria**: End-to-end: store case → retrieve similar cases works with <300ms latency
+
+**Delivers**: System can store and retrieve similar clinical cases from Qdrant
+
+---
+
+### Phase 3: Intelligence Layer
+**Goal**: Enable RAG-based clinical insights and adaptive learning
+
+**Entry Criteria**: Phase 2 complete
+
+**Tasks**:
+- [ ] Implement context retrieval and aggregation (depends on: [memory, models])
+  - Acceptance criteria: Retrieves top similar cases, aggregates context for LLM
+  - Test strategy: Test context aggregation from multiple retrieved cases
+
+- [ ] Implement LLM-based clinical reasoning (depends on: [rag])
+  - Acceptance criteria: Generates differential diagnoses, treatment recommendations with citations
+  - Test strategy: Test LLM integration, validate output structure
+
+- [ ] Implement automatic case addition to memory (depends on: [memory, learning])
+  - Acceptance criteria: New cases automatically embedded and stored
+  - Test strategy: Test case ingestion workflow
+
+- [ ] Implement pattern analysis and reindexing (depends on: [learning, memory])
+  - Acceptance criteria: Pattern detection works, periodic reindexing improves performance
+  - Test strategy: Test clustering, validate reindexing improves query speed
+
+**Exit Criteria**: End-to-end: query → retrieve → RAG → recommendation works
+
+**Delivers**: System provides AI-powered clinical recommendations with context
+
+---
+
+### Phase 4: Presentation & Analytics
+**Goal**: Enable visualization and analytics capabilities
+
+**Entry Criteria**: Phase 3 complete
+
+**Tasks**:
+- [ ] Implement case viewer dashboard (depends on: [memory, rag, models])
+  - Acceptance criteria: Dashboard displays retrieved cases, similarity scores visible
+  - Test strategy: Frontend component tests, integration with backend API
+
+- [ ] Implement similarity visualization (depends on: [viewer])
+  - Acceptance criteria: Visual indicators for similarity, ranking display works
+  - Test strategy: Test visualization components
+
+- [ ] Implement trend analysis (depends on: [analytics, memory])
+  - Acceptance criteria: Trend reports generated, time-series visualizations render
+  - Test strategy: Test trend computation with sample data
+
+- [ ] Implement outbreak detection (depends on: [analytics, memory])
+  - Acceptance criteria: Clusters detected, alerts triggered for outbreaks
+  - Test strategy: Test clustering algorithm, validate alert thresholds
+
+**Exit Criteria**: Dashboard displays cases, trends, and outbreaks visually
+
+**Delivers**: Doctors can view similar cases and health trends in dashboard
+
+---
+
+### Phase 5: Integration & API
+**Goal**: Expose full system via REST API and enable EHR integration
+
+**Entry Criteria**: Phase 4 complete
+
+**Tasks**:
+- [ ] Implement REST API endpoints (FastAPI) (depends on: [all previous modules])
+  - Acceptance criteria: All capabilities exposed via REST, OpenAPI docs generated
+  - Test strategy: API integration tests, validate all endpoints
+
+- [ ] Implement agent orchestration (depends on: [api])
+  - Acceptance criteria: Multi-step workflows orchestrated (transcribe → extract → retrieve → recommend)
+  - Test strategy: Test end-to-end workflows
+
+- [ ] Implement EHR adapters (depends on: [api])
+  - Acceptance criteria: HL7/FHIR adapters work, standalone mode available
+  - Test strategy: Test EHR integration, validate standalone mode
+
+- [ ] Dockerize deployment (depends on: [all modules])
+  - Acceptance criteria: Docker compose works, local Qdrant deployment functional
+  - Test strategy: Test Docker deployment, validate local Qdrant
+
+**Exit Criteria**: Full system deployed, API accessible, EHR integration functional
+
+**Delivers**: Production-ready system accessible via API, deployable in clinics
+
+---
+
+</implementation-roadmap>
+
+---
+
+<test-strategy>
+<instruction>
+Define how testing will be integrated throughout development (TDD approach).
+</instruction>
+
+## Test Pyramid
+
+```
+        /\
+       /E2E\       ← 10% (End-to-end, slow, comprehensive)
+      /------\
+     /Integration\ ← 30% (Module interactions)
+    /------------\
+   /  Unit Tests  \ ← 60% (Fast, isolated, deterministic)
+  /----------------\
+```
+
+## Coverage Requirements
+- Line coverage: 80% minimum
+- Branch coverage: 75% minimum
+- Function coverage: 85% minimum
+- Statement coverage: 80% minimum
+
+## Critical Test Scenarios
+
+### Real-Time Medical Transcription
+**Happy path**:
+- Live audio stream transcribed successfully
+- Expected: Transcript text returned with timestamps, speaker identification
+
+**Edge cases**:
+- Low-quality audio, background noise
+- Expected: Error handling, partial transcription, quality warnings
+
+**Error cases**:
+- Deepgram API failure, network timeout
+- Expected: Graceful degradation, retry logic, error messages
+
+**Integration points**:
+- Transcription → Entity extraction pipeline
+- Expected: Transcript flows correctly to NER module
+
+### Medical Entity Extraction & SOAP
+**Happy path**:
+- Transcript with medical entities extracted, SOAP note generated
+- Expected: All entities extracted (symptoms, diagnoses), valid SOAP structure
+
+**Edge cases**:
+- Ambiguous medical terms, slang
+- Expected: Best-effort extraction, confidence scores provided
+
+**Error cases**:
+- NER model failure, invalid transcript format
+- Expected: Error handling, fallback extraction, user notification
+
+**Integration points**:
+- Entity extraction → Qdrant storage
+- Expected: Entities stored with proper payloads
+
+### Clinical Memory & Retrieval
+**Happy path**:
+- Store case, retrieve similar cases with filters
+- Expected: Top-K similar cases returned, similarity scores accurate, filters applied
+
+**Edge cases**:
+- Empty collection, no similar cases found
+- Expected: Graceful handling, informative messages
+
+**Error cases**:
+- Qdrant connection failure, invalid query vector
+- Expected: Error handling, connection retry, validation errors
+
+**Integration points**:
+- Memory → RAG context retrieval
+- Expected: Retrieved cases formatted correctly for LLM input
+
+### RAG-based Clinical Insights
+**Happy path**:
+- Context retrieved, LLM generates recommendations
+- Expected: Structured recommendations with citations, confidence scores
+
+**Edge cases**:
+- Insufficient context, ambiguous query
+- Expected: Partial recommendations, confidence indicators
+
+**Error cases**:
+- LLM API failure, timeout
+- Expected: Fallback responses, error messages, retry logic
+
+**Integration points**:
+- RAG → Viewer display
+- Expected: Recommendations render correctly in dashboard
+
+### Analytics & Outbreak Detection
+**Happy path**:
+- Trend analysis computed, outbreak detected
+- Expected: Accurate trends, outbreak alerts triggered
+
+**Edge cases**:
+- Small dataset, sparse clusters
+- Expected: Statistical significance checks, confidence intervals
+
+**Error cases**:
+- Clustering algorithm failure, data corruption
+- Expected: Error handling, data validation
+
+**Integration points**:
+- Analytics → Dashboard visualization
+- Expected: Trends and clusters render correctly
+
+## Test Generation Guidelines
+
+- Focus on medical domain accuracy (entity extraction, diagnosis matching)
+- Test privacy compliance (PII removal, encryption) rigorously
+- Validate Qdrant performance (latency, similarity accuracy) with real data
+- Test multimodal workflows (text + image + audio) end-to-end
+- Include edge cases for low-resource environments (network issues, limited data)
+- Test HIPAA/GDPR compliance features (audit logs, de-identification)
+
+</test-strategy>
+
+---
+
+<architecture>
+<instruction>
+Describe technical architecture, data models, and key design decisions.
+</instruction>
+
+## System Components
+
+**Frontend**: React + Tailwind + Plotly dashboard for doctors
+- Patient summaries, transcript history, visual search results
+- Interactive UMAP-based visualization of patient clusters
+- Case comparison interface
+
+**Backend**: FastAPI application with modular services
+- Transcription service (Deepgram integration)
+- Entity extraction and SOAP generation
+- Qdrant vector store client
+- Embedding services (BioBERT, CLIP, AudioCLIP)
+- RAG engine with LLM integration
+- Analytics and clustering services
+
+**Vector Database**: Qdrant (local/on-premise deployment)
+- Multi-vector per point for multimodal storage
+- Payload-based filtering (age, region, timestamp, comorbidity)
+- Hybrid search (keyword + semantic)
+- Clustering for outbreak detection
+
+**Deployment**: Dockerized edge instance
+- Local Qdrant deployment
+- Optional sync to secure cloud Qdrant for aggregated learning
+- HIPAA/GDPR-compliant architecture
+
+## Data Models
+
+### Case Model
+```python
+{
+  "case_id": "uuid",
+  "patient_id": "anonymized_id",
+  "modalities": {
+    "text": {"transcript": "...", "soap": "...", "entities": [...]},
+    "image": {"paths": [...], "types": ["xray", "lab"]},
+    "audio": {"path": "...", "sound_type": "wheezing"}
+  },
+  "metadata": {
+    "timestamp": "2024-01-01T00:00:00Z",
+    "age_group": "adult",
+    "region": "rural_clinic_001",
+    "comorbidities": ["diabetes"],
+    "diagnosis": "pneumonia",
+    "outcome": "recovered"
+  },
+  "embeddings": {
+    "text": [vector_768],
+    "image": [vector_512],
+    "audio": [vector_128]
+  }
+}
+```
+
+### Payload Examples (from PRD)
+```json
+{
+  "modality": "text",
+  "diagnosis": "pneumonia",
+  "age_group": "adult",
+  "symptoms": ["fever", "cough"]
+}
+```
+
+```json
+{
+  "modality": "image",
+  "disease": "pneumonia",
+  "body_part": "chest"
+}
+```
+
+```json
+{
+  "modality": "audio",
+  "sound_type": "wheezing"
+}
+```
+
+## Technology Stack
+
+| Layer | Technology |
+|--------|-------------|
+| Core Engine | Qdrant (Vector Search & Memory) |
+| Embeddings | BioBERT, CLIP, OpenCLIP, AudioCLIP/OpenL3 |
+| Speech/Transcription | Deepgram Universal Streaming |
+| Backend | FastAPI / Python |
+| Frontend | React + Tailwind + Plotly (visual clustering) |
+| Visualization | 2D/3D UMAP from Qdrant embeddings |
+| Deployment | Dockerized Edge Instance + Qdrant Cloud Sync |
+| Security | AES-encrypted payload + anonymized IDs |
+
+**Decision: Qdrant as Core Vector Database**
+- **Rationale**: Deep integration needed (payload filters, hybrid search, clustering), on-premise deployment required for privacy, multi-vector support for multimodal data
+- **Trade-offs**: Learning curve, requires Qdrant-specific knowledge
+- **Alternatives considered**: Pinecone (cloud-only, not suitable), Milvus (more complex setup), Weaviate (less mature for medical use)
+
+**Decision: FastAPI for Backend**
+- **Rationale**: Python ecosystem (BioBERT, CLIP models), async support for real-time transcription, automatic OpenAPI docs
+- **Trade-offs**: Python performance vs Go/Rust, but sufficient for clinic-scale deployments
+- **Alternatives considered**: Flask (less async support), Django (too heavy), Node.js (limited ML libraries)
+
+**Decision: Multimodal Embeddings (BioBERT + CLIP + AudioCLIP)**
+- **Rationale**: Medical domain-specific (BioBERT), proven image embeddings (CLIP), audio support (AudioCLIP)
+- **Trade-offs**: Multiple embedding models increase complexity, but necessary for medical accuracy
+- **Alternatives considered**: Universal embeddings (less accurate for medical), single model (doesn't handle all modalities)
+
+## Technical Architecture (Qdrant-Centric Flow)
+
+```
+Patient Input → ASR Transcription (Deepgram)
+      ↓
+Entity Extraction → Medical Entities, Symptoms, Diagnosis
+      ↓
+Embedding Generation (BioBERT for text, CLIP for images)
+      ↓
+Qdrant Vector Store
+  ↳ Multi-Vector per Case (Text + Image + Audio)
+  ↳ Payload Filters (age, region, timestamp, comorbidity)
+  ↳ Hybrid Search + Clustering
+      ↓
+Contextual Retrieval → Top Similar Cases
+      ↓
+RAG-Based Summary → Clinical Insight Report
+      ↓
+Visualization Layer → Temporal Trends + Similar Case Map
+```
+
+### Key Qdrant Features Used
+- Payload-based filtering (age, timestamp, location)
+- Multi-vector per point for multimodal storage
+- Hybrid search (keyword + semantic)
+- Clustering for outbreak detection
+- Dynamic vector updates for evolving local memory
+
+</architecture>
+
+---
+
+<architecture>
+## 📚 Open-Access Medical Knowledge Integration
+
+### Sources (Open and Legally Accessible)
+- NCBI Bookshelf – 1,000+ NIH medical/health books (Textbooks)
+- Open Textbook Library – Peer-reviewed educational medical texts (Textbooks)
+- FreeMedicalTextbooks.com – Legally shared medical eBooks (Textbooks)
+- Bookboon Medicine Section – Free clinical and health science textbooks (Textbooks)
+- OpenStax Anatomy & Physiology – Gold-standard fundamentals (Textbook)
+- Wikibooks Medicine Portal – Modular open textbooks (Textbook)
+- PubMed Central Open Access Subset – Millions of biomedical PDFs (Articles)
+- BioMed Central – Open-access peer-reviewed journals (Articles)
+- PLOS Medicine – Leading OA medical journal (Articles)
+- MedRxiv – Clinical research preprints (Preprints)
+- arXiv Quantitative Biology – Computational/AI biology (Preprints)
+- WHO eLENA – Nutrition and preventive care evidence (Guidelines)
+- CDC Publications Portal – Disease/treatment guidance (Guidelines)
+- NICE Clinical Knowledge Summaries – Evidence-based summaries (Guidelines)
+- MedlinePlus Health Topics – Medical overviews (Summaries)
+- ClinicalTrials.gov – Ongoing/completed trials metadata (Trials)
+- SNOMED CT Browser – Clinical terminology (Ontology)
+- UMLS Metathesaurus – Unified medical language (Ontology)
+- ICD-10 Online – Disease classification (Ontology)
+- MIMIC-IV (PhysioNet) – ICU patient dataset for research (Dataset)
+
+### Automated Collection Pipeline
+- Python crawler (Requests + BeautifulSoup) to collect from listed domains
+- File filters: .pdf, .html, .xml, .epub
+- Extract: title, author, year, source domain
+- Chunk → embed (text) → store in Qdrant
+
+### Qdrant Metadata Schema (per document)
+```json
+{
+  "title": "...",
+  "source": "...",
+  "domain": "pathology | pharmacology | guidelines | ...",
+  "year": "2023",
+  "embedding_type": "text",
+  "access_type": "open",
+  "provenance_url": "https://...",
+  "version": "v1"
+}
+```
+
+### Compliance & Provenance
+- Only open-access or appropriately licensed materials
+- Store provenance URL and access_type=open to ensure legality/transparency
+- Respect robots.txt; include polite crawl delays
+
+### Continual Ingestion
+- Weekly cron job to re-scan sources
+- Versioning and delta-based ingestion to avoid duplicates
+- Update Qdrant memory incrementally with new publications
+
+</architecture>
+
+---
+
+<risks>
+<instruction>
+Identify risks that could derail development and how to mitigate them.
+</instruction>
+
+## Technical Risks
+
+**Risk**: Qdrant performance with large-scale medical datasets
+- **Impact**: High - Core system depends on Qdrant performance
+- **Likelihood**: Medium - Large datasets may slow queries
+- **Mitigation**: Performance testing early, optimize HNSW parameters, implement caching, periodic reindexing
+- **Fallback**: Scale Qdrant instance, use Qdrant Cloud for larger deployments
+
+**Risk**: Embedding model accuracy for medical domain
+- **Impact**: High - Retrieval accuracy depends on embeddings
+- **Likelihood**: Medium - General models may not capture medical nuances
+- **Mitigation**: Use domain-specific models (BioBERT), fine-tune on medical data, validate with medical experts
+- **Fallback**: Ensemble multiple embedding models, use hybrid search with keyword matching
+
+**Risk**: Deepgram transcription accuracy for medical terminology
+- **Impact**: Medium - Entity extraction depends on accurate transcription
+- **Likelihood**: Medium - Medical terms may be mis-transcribed
+- **Mitigation**: Use medical vocabulary customization, post-processing correction, validate with doctors
+- **Fallback**: Manual transcription fallback, improved medical vocabulary training
+
+**Risk**: LLM integration reliability and cost
+- **Impact**: Medium - Clinical recommendations depend on LLM
+- **Likelihood**: Low - LLM APIs generally stable
+- **Mitigation**: Implement retry logic, caching, fallback to rule-based recommendations
+- **Fallback**: Use local LLM models (Ollama), reduce LLM dependency
+
+**Risk**: Privacy compliance complexity (HIPAA/GDPR)
+- **Impact**: High - System cannot deploy without compliance
+- **Likelihood**: Medium - Compliance requires careful implementation
+- **Mitigation**: Early privacy review, implement de-identification rigorously, audit logging, encryption
+- **Fallback**: Consult compliance experts, simplify data handling if needed
+
+## Dependency Risks
+
+**External Dependencies**:
+- Deepgram API availability and pricing changes
+  - Mitigation: Monitor API status, implement fallback transcription services
+- Qdrant version updates and breaking changes
+  - Mitigation: Pin versions, test updates in staging, maintain compatibility layer
+- Embedding model availability (BioBERT, CLIP models)
+  - Mitigation: Cache models locally, maintain model versions
+
+**Blocking Issues**:
+- Qdrant local deployment complexity in clinic environments
+  - Mitigation: Dockerize everything, provide clear deployment docs, support team
+- Medical dataset licensing and access (MIMIC, etc.)
+  - Mitigation: Use public datasets, clarify licensing early, provide alternatives
+
+## Scope Risks
+
+**Scope Creep**:
+- Adding too many modalities or features before core works
+  - Mitigation: Stick to phased roadmap, prioritize core features (text + image first)
+- EHR integration complexity underestimated
+  - Mitigation: Start with standalone mode, EHR integration as Phase 5
+
+**Underestimation**:
+- Embedding generation and storage performance
+  - Mitigation: Performance testing early, optimize batch processing
+- Outbreak detection algorithm complexity
+  - Mitigation: Start with simple clustering, iterate based on results
+
+**Unclear Requirements**:
+- Doctor workflow integration unclear
+  - Mitigation: User research early, iterative feedback from doctors
+- Medical entity extraction accuracy requirements
+  - Mitigation: Validate with medical experts, set clear accuracy targets (90%+)
+
+</risks>
+
+---
+
+<appendix>
+## References
+
+**Medical Datasets**:
+- MIMIC-III / MIMIC-IV – anonymized ICU patient records
+- MedDialog – doctor-patient conversations
+- i2b2 Clinical Notes – discharge summaries and problem lists
+- PubMedQA / MedQA – clinical Q&A pairs
+- NIH Chest X-ray14 – labeled chest X-rays
+- CheXpert / MIMIC-CXR – higher-quality large-scale datasets
+- MedMNIST / PathMNIST – smaller demo-friendly datasets
+- ICBHI Respiratory Sound Database
+- COUGHVID
+- PhysioNet Heart Sound Dataset
+- WHO Open Data for outbreak simulation and trend analysis
+
+**Technology Documentation**:
+- Qdrant Documentation: https://qdrant.tech/documentation/
+- Deepgram API: https://www.deepgram.com/docs
+- BioBERT: https://github.com/dmis-lab/biobert
+- CLIP: https://github.com/openai/CLIP
+- FastAPI: https://fastapi.tiangolo.com/
+
+**Related Systems**:
+- Clinical decision support systems
+- Medical transcription systems
+- Population health analytics platforms
+
+## Glossary
+
+- **SOAP Notes**: Subjective, Objective, Assessment, Plan - structured clinical documentation format
+- **NER**: Named Entity Recognition - extracting medical entities from text
+- **RAG**: Retrieval-Augmented Generation - combining retrieved context with LLM generation
+- **HNSW**: Hierarchical Navigable Small World - Qdrant's indexing algorithm
+- **Payload**: Metadata attached to Qdrant vectors for filtering
+- **Multi-vector**: Multiple embedding vectors per point in Qdrant (one per modality)
+- **Hybrid Search**: Combining semantic similarity with keyword matching
+- **PII**: Personally Identifiable Information - data that identifies individuals
+- **EHR**: Electronic Health Record - digital patient records systems
+- **HL7/FHIR**: Healthcare data exchange standards
+
+## Open Questions
+
+1. **Audio Modality Priority**: Should audio embedding be Phase 3 (optional) or earlier?
+   - Decision: Keep as optional Phase 3, focus on text + image first
+
+2. **LLM Model Selection**: BioGPT vs MedPaLM vs general models?
+   - Decision: Start with general models (GPT-4/Claude), evaluate medical-specific models later
+
+3. **Qdrant Cloud Sync**: Should cloud sync be required or truly optional?
+   - Decision: Truly optional, local-first by default, cloud sync for aggregated learning only
+
+4. **Real-time vs Batch Processing**: Should transcription be real-time or batch?
+   - Decision: Support both, real-time for live consultations, batch for historical data
+
+5. **Outbreak Detection Thresholds**: How to set clustering thresholds for alerts?
+   - Decision: Configurable thresholds, default based on statistical significance
+
+6. **EHR Integration Scope**: Which EHR systems to prioritize?
+   - Decision: Start with common formats (HL7, FHIR), add specific EHR adapters based on demand
+
+</appendix>
+
+---
+
+<task-master-integration>
+# How Task Master Uses This PRD
+
+When you run `task-master parse-prd <file>.txt`, the parser:
+
+1. **Extracts capabilities** → Main tasks
+   - Each `### Capability:` becomes a top-level task
+
+2. **Extracts features** → Subtasks
+   - Each `#### Feature:` becomes a subtask under its capability
+
+3. **Parses dependencies** → Task dependencies
+   - `Depends on: [X, Y]` sets task.dependencies = ["X", "Y"]
+
+4. **Orders by phases** → Task priorities
+   - Phase 0 tasks = highest priority
+   - Phase N tasks = lower priority, properly sequenced
+
+5. **Uses test strategy** → Test generation context
+   - Feeds test scenarios to Surgical Test Generator during implementation
+
+**Result**: A dependency-aware task graph that can be executed in topological order.
+
+## Why RPG Structure Matters
+
+Traditional flat PRDs lead to:
+- ❌ Unclear task dependencies
+- ❌ Arbitrary task ordering
+- ❌ Circular dependencies discovered late
+- ❌ Poorly scoped tasks
+
+RPG-structured PRDs provide:
+- ✅ Explicit dependency chains
+- ✅ Topological execution order
+- ✅ Clear module boundaries
+- ✅ Validated task graph before implementation
+
+## Tips for Best Results
+
+1. **Spend time on dependency graph** - This is the most valuable section for Task Master
+2. **Keep features atomic** - Each feature should be independently testable
+3. **Progressive refinement** - Start broad, use `task-master expand` to break down complex tasks
+4. **Use research mode** - `task-master parse-prd --research` leverages AI for better task generation
+</task-master-integration>
