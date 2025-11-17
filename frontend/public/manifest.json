@@ -1,0 +1,19 @@
+{
+  "name": "HygiaAI Clinical Voice Assistant",
+  "short_name": "HygiaAI",
+  "description": "Real-time clinical voice assistant with offline support",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1E3A8A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

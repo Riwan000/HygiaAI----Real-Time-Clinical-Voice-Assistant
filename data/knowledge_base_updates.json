@@ -1,0 +1,83 @@
+{
+  "last_update": "2025-11-16T21:22:08.632261+00:00",
+  "update_frequency_days": 7,
+  "update_history": [
+    {
+      "timestamp": "2025-11-16T21:22:06.265935+00:00",
+      "checked": true,
+      "update_needed": true,
+      "documents_checked": 9,
+      "documents_updated": 0,
+      "documents_new": 9,
+      "documents_unchanged": 0,
+      "errors": 0,
+      "updated_documents": [
+        {
+          "doc_id": "who_hypertension-management",
+          "title": "WHO Guidelines for Hypertension Management",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:06.627506+00:00"
+        },
+        {
+          "doc_id": "who_diabetes-care",
+          "title": "WHO Guidelines for Diabetes Care",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:06.929847+00:00"
+        },
+        {
+          "doc_id": "who_respiratory-infections",
+          "title": "WHO Guidelines for Respiratory Infections",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:07.203842+00:00"
+        },
+        {
+          "doc_id": "cdc_flu_treatment",
+          "title": "CDC Influenza Treatment Guidelines",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:07.409004+00:00"
+        },
+        {
+          "doc_id": "cdc_antibiotic-use",
+          "title": "CDC Antibiotic Stewardship Guidelines",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:07.613004+00:00"
+        },
+        {
+          "doc_id": "medical_ref_0",
+          "title": "Common Drug Interactions Reference",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:07.849464+00:00"
+        },
+        {
+          "doc_id": "medical_ref_1",
+          "title": "Emergency Medicine Protocols",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:08.213196+00:00"
+        },
+        {
+          "doc_id": "medical_ref_2",
+          "title": "Pediatric Dosing Guidelines",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:08.399071+00:00"
+        },
+        {
+          "doc_id": "medical_ref_3",
+          "title": "Lab Value Interpretation Guide",
+          "status": "new",
+          "timestamp": "2025-11-16T21:22:08.632249+00:00"
+        }
+      ]
+    }
+  ],
+  "document_versions": {
+    "who_hypertension-management": "1cdf74e22a316799c061a33f56e5e28bc3b93b16bcbc73af0e112f84c877f387",
+    "who_diabetes-care": "f9b0093c30b80f681dd4986cf48e3288a945876eede583fe17c8703b28bc01cf",
+    "who_respiratory-infections": "9793c45f7deecd8570bba9a3f7c7fc09e58a681ae54f5e67523ea397b58481bd",
+    "cdc_flu_treatment": "c7f6babe9c47328bfb56d0ed6715a8a3e281851768a8e38e8cc2b6e436b48718",
+    "cdc_antibiotic-use": "75ba14a4d3f59368b885de820a4e2b4eebc0e8af4cd47cde29a1715f1637579e",
+    "medical_ref_0": "b35ec167cc5100097c8c184bead66f6a9fb5c952067bd8160b1daf0aa33b429c",
+    "medical_ref_1": "11b8aef78e155b7f27ffd79b4ef70db3a12956c40a2bf0a9a6b7dbc8206f578d",
+    "medical_ref_2": "88aa3545324d765faeffba776123edc077762e9063afe8c55cbd77eb1daf5d9e",
+    "medical_ref_3": "a6279ce1ac45b159cfce6e68f4d2e759e0a41126c7c3381a4780f304b0a1a74c"
+  }
+}

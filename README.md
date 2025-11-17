@@ -55,6 +55,8 @@ python examples/demo_end_to_end.py
 
 ### ✅ Completed Features
 
+#### Backend Features
+
 1. **ASR Transcription (Deepgram)**
    - Real-time streaming transcription
    - Adaptive streaming configuration
@@ -98,12 +100,34 @@ python examples/demo_end_to_end.py
    - Outbreak detection
    - RESTful API endpoints
 
+#### Frontend Features
+
+8. **SOAP Note Viewer** ✅
+   - Expand/collapse sections (S/O/A/P)
+   - Patient and clinician information display
+   - PDF export with professional formatting
+   - Copy to clipboard and print functionality
+   - Manual editing with version history
+   - Annotations and comments support
+
+9. **Analytics & Visualization Dashboard** ✅
+   - Interactive time-series trend charts (Plotly.js)
+   - Disease cluster bubble maps
+   - Clinic-level disease pattern heatmaps
+   - Outbreak alert notifications with severity levels
+   - Comprehensive filter system (time range, region, disease type, granularity)
+   - Chart export (PNG, SVG)
+   - Real-time data updates
+
 ### 🚧 Pending Features
 
-8. **Outbreak Detection Algorithm** (partially implemented)
-9. **HL7/FHIR EHR Integration**
-10. **Privacy Compliance Implementation** (mostly done)
-11-15. **Open-Access Knowledge Integration**
+10. **Case Timeline Viewer** (in progress)
+11. **Knowledge Base Browser UI**
+12. **Multimodal Input UI** (partially implemented)
+13. **Outbreak Detection Algorithm** (partially implemented)
+14. **HL7/FHIR EHR Integration**
+15. **Privacy Compliance Implementation** (mostly done)
+16-20. **Open-Access Knowledge Integration**
 
 ## 📁 Project Structure
 
@@ -171,6 +195,7 @@ Default model: `gpt-4` (OpenAI)
 - **Quick Start Guide:** `QUICK_START_GUIDE.md`
 - **PRD:** `prd/hygiaai_qdrant_prd_combined.md`
 - **Testing Guide:** `TESTING_GUIDE.md`
+- **Frontend Demo Guide:** `docs/FRONTEND_DEMO_GUIDE.md`
 
 ## 🏗️ Architecture
 

@@ -14,7 +14,6 @@ from dataclasses import dataclass
 
 from deepgram import Deepgram
 
-from config import DEEPGRAM_API_KEY
 from .streaming_manager import StreamingManager, AdaptiveStreamingConfig
 from .error_handler import ErrorHandler, FallbackHandler, RetryConfig
 
@@ -81,11 +80,11 @@ class DeepgramClient:
         Initialize Deepgram client
         
         Args:
-            api_key: Deepgram API key. If None, reads from config.DEEPGRAM_API_KEY
+            api_key: Deepgram API key. If None, reads from environment variable DEEPGRAM_API_KEY
             streaming_config: Adaptive streaming configuration
             retry_config: Retry configuration for error handling
         """
-        self.api_key = api_key or DEEPGRAM_API_KEY
+        self.api_key = api_key or os.getenv("DEEPGRAM_API_KEY")
         
         if not self.api_key:
             raise ValueError(

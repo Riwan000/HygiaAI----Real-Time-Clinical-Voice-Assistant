@@ -1,0 +1,347 @@
+<rpg-method>
+# Repository Planning Graph (RPG) Method - PRD Template
+
+## Project Title
+🧠 HygiaAI: Qdrant-Powered Clinical Memory System
+
+## Problem Statement
+
+In low-resource clinics, doctors lack centralized access to prior patient cases or institutional memory. Critical data — past conversations, medical images, test results — often remain fragmented or lost. This leads to repeated misdiagnoses, inefficient follow-ups, and preventable errors. HygiaAI solves this by remembering every clinical encounter, embedding it semantically, and enabling retrieval of the most relevant prior cases in seconds.
+
+**Tagline**: "An AI Clinical Memory System powered by Qdrant — enabling doctors to recall, reason, and recommend smarter decisions using past patient data."
+
+## Target Users
+
+**Primary Users**: Doctors and healthcare workers in low-resource clinical environments (rural clinics, underserved areas)
+
+**User Workflows**:
+- Doctors need to recall similar past cases during patient consultations
+- Healthcare workers need to access historical medical images and transcripts
+- Clinics need to identify emerging health patterns and outbreaks
+- Medical staff require structured clinical notes (SOAP format) from conversations
+
+## Success Metrics
+
+**Quantifiable Outcomes**:
+- **Retrieval Accuracy**: 80%+ of correct similar-case matches retrieved
+- **Latency**: Query response time < 300ms on local Qdrant
+- **Adaptation Rate**: 50+ new cases embedded per week in active clinics
+- **Outbreak Detection Precision**: 85%+ accuracy of anomaly clustering
+- **User Trust Score**: 4.0+/5.0 doctor feedback on retrieved case usefulness
+- **Diagnostic Error Reduction**: 15–25% reduction in diagnostic error rates at scale
+- **Transcription Accuracy**: 95%+ accuracy in medical entity extraction
+- **SOAP Note Generation**: < 2 seconds from transcript to structured SOAP format
+
+## Capability Tree
+
+### Capability: Real-Time Medical Transcription
+Enables conversion of live doctor-patient audio into searchable text transcripts with medical context.
+
+#### Feature: Live Audio Transcription
+- **Description**: Converts live doctor–patient audio into text in real-time using Deepgram Universal Streaming
+- **Inputs**: Live audio stream (doctor-patient conversation), audio format metadata
+- **Outputs**: Real-time transcript text, timestamps, speaker identification
+- **Behavior**: Continuous audio processing, buffering for real-time output, error handling for audio quality issues
+
+#### Feature: Transcript Storage & Indexing
+- **Description**: Feeds transcripts into Qdrant as embeddings for semantic recall later
+- **Inputs**: Transcript text, session metadata, timestamps
+- **Outputs**: Stored transcript in Qdrant with vector embeddings, indexed for retrieval
+- **Behavior**: Generate text embeddings (BioBERT), store with payload metadata (modality: "text", timestamp, session_id), enable immediate search capability
+
+### Capability: Medical Entity Extraction & SOAP Summarization
+Automatically extracts structured medical information and generates clinical documentation.
+
+#### Feature: Medical Entity Extraction
+- **Description**: Automatically extracts key entities (symptoms, diagnosis, medication, vitals) from transcripts
+- **Inputs**: Transcript text, medical vocabulary/ontology
+- **Outputs**: Structured entities (symptoms list, diagnoses, medications, vital signs), confidence scores
+- **Behavior**: NER (Named Entity Recognition) using medical models, validation against medical ontologies, entity linking to standardized codes
+
+#### Feature: SOAP Note Generation
+- **Description**: Generates structured SOAP notes (Subjective, Objective, Assessment, Plan) instantly from transcripts
+- **Inputs**: Transcript text, extracted entities, patient metadata
+- **Outputs**: Structured SOAP note JSON/document, formatted clinical record
+- **Behavior**: Template-based generation, section classification (Subjective vs Objective), assessment reasoning, plan generation from extracted entities
+
+#### Feature: Data Storage & Vectorization
+- **Description**: Stores both raw and summarized data in the vector database
+- **Inputs**: Raw transcript, SOAP notes, extracted entities
+- **Outputs**: Multiple vector entries in Qdrant (raw text, SOAP summary, entity embeddings)
+- **Behavior**: Parallel embedding generation for different data views, payload enrichment with structured metadata
+
+### Capability: Clinical Memory & Similar Case Retrieval
+Core Qdrant-powered capability for storing and retrieving multimodal clinical case data.
+
+#### Feature: Multimodal Embedding Storage
+- **Description**: Stores multimodal embeddings (text, images, documents) in Qdrant with rich payloads
+- **Inputs**: Text transcripts, medical images (X-rays, lab scans), documents (test reports, prescriptions), metadata
+- **Outputs**: Vector points in Qdrant with multi-vector support (text + image + audio vectors per case)
+- **Behavior**: Generate embeddings per modality (BioBERT for text, CLIP for images, AudioCLIP for audio), create unified point ID per case, store with payload filters (age, region, timestamp, comorbidity)
+
+#### Feature: Similar Case Search
+- **Description**: Retrieves most similar past cases and outcomes when a new case comes in
+- **Inputs**: Query case (text/image/audio), similarity threshold, filter criteria (time range, age group, region)
+- **Outputs**: Top-K similar cases (default: top 5), similarity scores, case metadata, outcomes
+- **Behavior**: Multi-vector similarity search in Qdrant, apply payload filters (temporal, demographic), rank by cosine distance, return top matches with scores
+
+#### Feature: Temporal & Hybrid Filtering
+- **Description**: Time-aware retrieval using Qdrant payload filters (e.g., "similar pneumonia cases in the past 3 months")
+- **Inputs**: Query vector, time range filter, additional filters (age group, comorbidities, region)
+- **Outputs**: Filtered similar cases within specified constraints
+- **Behavior**: Build filter query with timestamp ranges, combine with semantic similarity, hybrid search (keyword + semantic), execute filtered search
+
+### Capability: RAG-based Clinical Insights
+Combines retrieved context with LLM reasoning for context-aware clinical recommendations.
+
+#### Feature: Context Retrieval & Aggregation
+- **Description**: Retrieves relevant context from Qdrant memory and aggregates for LLM input
+- **Inputs**: Query case, retrieval parameters (top-K, filters)
+- **Outputs**: Aggregated context (top similar cases, their outcomes, medical literature snippets)
+- **Behavior**: Execute similar case search, retrieve medical knowledge base entries, format context for LLM prompt
+
+#### Feature: LLM-based Clinical Reasoning
+- **Description**: Produces context-aware suggestions using LLM (BioGPT/MedPaLM) with grounded retrieval
+- **Inputs**: Aggregated context, query case details, LLM model
+- **Outputs**: Possible differential diagnoses, next steps/treatment options, relevant medical literature snippets, recommendation confidence scores
+- **Behavior**: Construct prompt with retrieved context, call LLM API, parse structured output (diagnoses, treatments, citations), generate explainable recommendations
+
+#### Feature: Explainable Recommendations
+- **Description**: Provides reasoning traces showing what influenced the recommendation
+- **Inputs**: LLM output, retrieved cases, similarity scores
+- **Outputs**: Structured recommendation with citations, similarity weights, reasoning chain
+- **Behavior**: Extract citations from LLM output, highlight top similar cases that influenced reasoning, display Qdrant similarity scores
+
+### Capability: Adaptive Learning Memory
+Continuous enrichment of the clinical memory system with new cases and patterns.
+
+#### Feature: Automatic Case Addition
+- **Description**: Automatically adds each new patient case (text/image/audio) to Qdrant memory
+- **Inputs**: New case data (transcript, images, audio), metadata, outcomes
+- **Outputs**: New vector points in Qdrant, updated memory index
+- **Behavior**: Generate embeddings for new case, create payload with metadata, upsert to Qdrant, update local memory index
+
+#### Feature: Pattern Learning & Evolution
+- **Description**: Learns evolving diagnostic patterns in local context (e.g., rural disease trends)
+- **Inputs**: Historical case data, temporal patterns, regional metadata
+- **Outputs**: Pattern insights, trend analysis, updated diagnostic models
+- **Behavior**: Periodic clustering analysis, trend detection over time windows, regional pattern identification, update recommendation weights
+
+#### Feature: Periodic Reindexing
+- **Description**: Periodic reindexing/clustering to improve recall speed and precision
+- **Inputs**: Complete Qdrant collection, reindexing schedule
+- **Outputs**: Optimized index, improved query performance
+- **Behavior**: Schedule periodic reindexing (weekly/monthly), optimize HNSW parameters, update cluster assignments, validate performance improvements
+
+### Capability: Multimodal Case Viewer
+Unified dashboard for doctors to explore retrieved similar cases visually.
+
+#### Feature: Case Retrieval Display
+- **Description**: Unified dashboard to view all retrieved similar cases (text notes, lab images, past treatment plans & outcomes)
+- **Inputs**: Retrieved similar cases from Qdrant, similarity scores
+- **Outputs**: Rendered dashboard with case cards, similarity rankings, metadata display
+- **Behavior**: Fetch case details from Qdrant, format for display, rank by similarity, render multimodal content (text, images, audio previews)
+
+#### Feature: Similarity Visualization
+- **Description**: Embedding-based similarity ranking (cosine distance from Qdrant) with visual indicators
+- **Inputs**: Similarity scores, case metadata
+- **Outputs**: Visual similarity indicators, ranking display, score explanations
+- **Behavior**: Map similarity scores to visual indicators (color coding, bar charts), explain why cases are similar, highlight key matching features
+
+#### Feature: Side-by-Side Case Comparison
+- **Description**: Side-by-side view of retrieved similar cases with highlighted symptom overlaps and diagnosis pathways
+- **Inputs**: Query case, retrieved similar cases
+- **Outputs**: Comparison view with highlighted overlaps, diagnosis pathway visualization
+- **Behavior**: Align cases side-by-side, highlight matching symptoms/entities, visualize diagnosis progression, show treatment outcome differences
+
+### Capability: Privacy & Compliance Layer
+Ensures HIPAA/GDPR compliance and data privacy protection.
+
+#### Feature: De-identification
+- **Description**: De-identification of patient data before embedding
+- **Inputs**: Raw patient data (transcripts, images, metadata)
+- **Outputs**: De-identified data (anonymized IDs, removed PII), mapping keys (for audit)
+- **Behavior**: Remove/replace PII (names, addresses, SSNs), generate anonymized patient IDs, maintain secure mapping (encrypted) for audit purposes, validate no PII in embeddings
+
+#### Feature: Local-First Deployment
+- **Description**: Local Qdrant deployment (no cloud data leak)
+- **Inputs**: Deployment configuration, data location preferences
+- **Outputs**: On-premise Qdrant instance, encrypted data storage
+- **Behavior**: Deploy Qdrant locally or on clinic server, encrypt data at rest, ensure no data transmission to external clouds, validate network isolation
+
+#### Feature: Audit Trail
+- **Description**: Audit trail for every AI recommendation
+- **Inputs**: All AI recommendations, user actions, system events
+- **Outputs**: Encrypted audit logs, compliance reports
+- **Behavior**: Log all recommendation requests with timestamps, store encrypted logs, generate compliance reports, enable audit log queries
+
+### Capability: Analytics & Pattern Discovery
+Transforms case data into actionable population health insights.
+
+#### Feature: Trend Analysis
+- **Description**: Trends in patient symptoms, prescriptions, outcomes over time
+- **Inputs**: Historical case data, temporal windows, aggregation criteria
+- **Outputs**: Trend reports, time-series visualizations, statistical summaries
+- **Behavior**: Aggregate cases by time windows, compute trends (symptom frequency, prescription patterns, outcome rates), generate visualizations, detect anomalies
+
+#### Feature: Outbreak Detection
+- **Description**: Identify emerging local health issues early (e.g., outbreak signals) via Qdrant clustering
+- **Inputs**: Recent case data, clustering parameters, threshold settings
+- **Outputs**: Outbreak alerts, cluster visualizations, risk assessments
+- **Behavior**: Clustering analysis on recent cases (last 1-2 weeks), detect density spikes in similar cases, trigger alerts for clusters above threshold, visualize outbreak clusters on map
+
+#### Feature: Pattern Discovery
+- **Description**: Qdrant enables clustering of similar cases for insight generation
+- **Inputs**: All case data, clustering algorithm parameters
+- **Outputs**: Case clusters, pattern insights, population health summaries
+- **Behavior**: Execute clustering on Qdrant embeddings, identify disease clusters, analyze cluster characteristics, generate insights on population health patterns
+
+### Capability: Unified Clinical Memory API Layer
+Merges all modules (ASR, embedding, retrieval, RAG, SOAP) into a unified REST API for clinical memory operations.
+
+#### Feature: Unified API Endpoints
+- **Description**: Exposes unified `/api/v1/clinical_memory/*` endpoints for all clinical memory operations
+- **Inputs**: HTTP requests (POST/GET), request payloads (audio, text, images, lab reports, queries)
+- **Outputs**: HTTP responses (JSON), structured clinical data
+- **Behavior**: Define FastAPI routes for `/ingest`, `/soap`, `/recall_case`, `/summary`, `/analytics`, `/outbreak`, `/knowledge`, handle request validation, process requests, return structured JSON responses, provide OpenAPI/Swagger docs
+
+#### Feature: Multimodal Ingestion Orchestrator
+- **Description**: Automatically ingests audio consultations, text transcripts, lab reports (PDF/JSON), images (X-ray scans), converts to embeddings, and stores in Qdrant
+- **Inputs**: Audio files (.wav, .mp3), text files (.txt), lab reports (.pdf, .json), images (.png, .jpg)
+- **Outputs**: Stored multimodal data in Qdrant with embeddings, ingestion status
+- **Behavior**: Detect input type, route to appropriate processor (audio → transcription, image → CLIP embedding, lab → normalization), generate embeddings, store in Qdrant with metadata, return ingestion confirmation
+
+#### Feature: Automated SOAP Note Generation Layer
+- **Description**: Converts raw consultation transcripts to structured Subjective/Objective/Assessment/Plan with each SOAP field embedded separately and stored in Qdrant with rich metadata
+- **Inputs**: Raw consultation transcript, patient metadata
+- **Outputs**: Structured SOAP note (S/O/A/P), separate embeddings per field, Qdrant storage confirmation
+- **Behavior**: Pipeline: ASR → Entities → SOAP → Embeddings → Qdrant, generate separate embeddings for each SOAP section, store with metadata (patient_id, timestamp, clinician), enable field-level similarity search
+
+#### Feature: Instant Similar Case Recall Engine
+- **Description**: Input (audio/text/image/lab) → embedding → Qdrant → top 3–5 similar cases with <300ms latency
+- **Inputs**: Query case (audio/text/image/lab report), similarity threshold, filter criteria
+- **Outputs**: Top 3-5 similar cases, similarity scores, case metadata, outcomes
+- **Behavior**: Generate query embedding, execute Qdrant similarity search, apply filters (temporal, demographic), rank by cosine distance, return top matches with scores, ensure <300ms latency
+
+#### Feature: Context-Aware Case Summarizer
+- **Description**: Rewrites summary based on retrieved past cases, generates differential diagnosis + recommended plan using LLM reasoning
+- **Inputs**: Current case, retrieved similar cases, LLM model
+- **Outputs**: Context-aware summary, differential diagnosis list, recommended treatment plan, confidence scores
+- **Behavior**: Aggregate retrieved case context, construct LLM prompt with context, generate summary with differential diagnosis, extract treatment recommendations, provide confidence scores based on case similarity
+
+#### Feature: Lab Report Normalization & Embedding
+- **Description**: Converts CBC/LFT/RFT lab values into numerical/semantic formats, stores as structured JSON + embedding
+- **Inputs**: Lab reports (PDF/JSON), lab test types (CBC, LFT, RFT, etc.)
+- **Outputs**: Normalized lab values (structured JSON), semantic embeddings, stored in Qdrant
+- **Behavior**: Parse lab report (PDF extraction or JSON parsing), normalize values (units, ranges), extract test names and results, generate embeddings for lab data, store as structured JSON with embeddings in Qdrant
+
+### Capability: Knowledge Intelligence & Trend Analysis
+Advanced analytics for population health insights and pattern discovery.
+
+#### Feature: Cross-Patient Temporal Clustering
+- **Description**: Identifies clusters by time (week/month/season), location, symptom similarity, lab pattern similarity
+- **Inputs**: Historical case data, temporal windows, clustering parameters
+- **Outputs**: Case clusters, cluster characteristics, temporal patterns
+- **Behavior**: Execute clustering on Qdrant embeddings with temporal filters, identify clusters by time windows, analyze cluster characteristics (symptoms, lab patterns, locations), generate cluster summaries
+
+#### Feature: Regional Health Trend Analytics
+- **Description**: Tracks rising diseases, common complaints, treatment success rates, local outbreaks
+- **Inputs**: Historical case data, regional metadata, time ranges
+- **Outputs**: Trend reports, disease frequency charts, treatment success metrics, outbreak alerts
+- **Behavior**: Aggregate cases by region and time, compute disease frequency trends, calculate treatment success rates, detect rising disease patterns, generate visualizations
+
+#### Feature: Clinical Trust Score System
+- **Description**: Confidence score based on embedding similarity, source reliability, recency, cross-case agreement
+- **Inputs**: Retrieved cases, similarity scores, case metadata, source information
+- **Outputs**: Trust scores (0-1), confidence indicators, reliability metrics
+- **Behavior**: Calculate trust score from embedding similarity, factor in source reliability, apply recency weighting, compute cross-case agreement, return trust scores with explanations
+
+### Capability: Deployment & Architecture
+Infrastructure and deployment capabilities for rural clinic environments.
+
+#### Feature: Offline Rural Deployment Kit
+- **Description**: Docker Compose bundle with FastAPI, Ollama, Qdrant, Frontend dashboard that works fully offline
+- **Inputs**: Deployment configuration, clinic requirements
+- **Outputs**: Dockerized deployment, offline-capable system
+- **Behavior**: Package all components in Docker Compose, configure local Qdrant, set up Ollama for local LLM, bundle frontend, ensure offline operation, provide deployment scripts
+
+#### Feature: Rural Connectivity Sync Layer
+- **Description**: When internet is available → delta-sync embeddings and metadata to central Qdrant (no raw patient data sent)
+- **Inputs**: Local Qdrant data, sync configuration, network status
+- **Outputs**: Sync status, synced data confirmation
+- **Behavior**: Detect internet connectivity, extract embeddings and metadata (no PII), delta-sync to central Qdrant, track sync status, handle sync failures gracefully
+
+#### Feature: Federated Memory Architecture (Phase 3 Ready)
+- **Description**: Multi-clinic knowledge sharing without violating privacy using federated embeddings + aggregation
+- **Inputs**: Multiple clinic embeddings, aggregation parameters
+- **Outputs**: Aggregated knowledge model, privacy-preserving insights
+- **Behavior**: Collect embeddings from multiple clinics, aggregate without raw data, generate shared knowledge model, maintain privacy boundaries, enable cross-clinic pattern discovery
+
+#### Feature: Deployment Pipeline (Vercel + VPS/Ollama backend)
+- **Description**: Vercel hosts UI, backend hosted on local clinic server or cloud VPS, HTTPS proxy connector
+- **Inputs**: Deployment configuration, hosting preferences
+- **Outputs**: Deployed system, accessible URLs, HTTPS endpoints
+- **Behavior**: Deploy frontend to Vercel, configure backend on VPS/local server, set up HTTPS proxy, configure CORS, enable secure communication
+
+### Capability: Frontend — Doctor Interface
+Simple, fast, intuitive system for doctors to access clinical memory in seconds.
+
+#### Feature: Clinical Memory Dashboard (Doctor UI)
+- **Description**: Clean dashboard showing search box (symptoms or transcript pasted), top similar cases from Qdrant, structured SOAP notes, similarity score bar, side-by-side comparison, treatment outcome patterns
+- **Inputs**: User queries, case data from API
+- **Outputs**: Rendered dashboard with search results, case displays, similarity visualizations
+- **Behavior**: Display search interface, fetch similar cases from API, render case cards with similarity scores, show SOAP notes, enable side-by-side comparison, display treatment outcomes
+
+#### Feature: Multimodal Input UI
+- **Description**: Doctors can upload audio (.wav, .mp3), transcripts (.txt), lab reports (.pdf/.png), images (X-rays), UI routes request through API
+- **Inputs**: File uploads (audio, text, PDF, images)
+- **Outputs**: Upload confirmation, processing status, ingestion results
+- **Behavior**: Accept file uploads, validate file types, send to API endpoints, display processing status, show ingestion results
+
+#### Feature: SOAP Note Viewer in UI
+- **Description**: For each case, show S/O/A/P sections with ability to expand/collapse, view metadata (age, gender, timestamp, location), copy or export
+- **Inputs**: SOAP note data, case metadata
+- **Outputs**: Rendered SOAP note viewer, exportable formats
+- **Behavior**: Display SOAP sections (expandable/collapsible), show metadata, enable copy functionality, provide export options (PDF, DOCX)
+
+#### Feature: Outbreak & Trend Visualization UI
+- **Description**: Graphs include symptom spikes, disease clusters, seasonal trends, clinic-level disease heatmaps, line graphs for recurring patterns using Plotly, Chart.js, or Recharts
+- **Inputs**: Analytics data from API
+- **Outputs**: Interactive visualizations, trend charts, heatmaps
+- **Behavior**: Fetch analytics data, render interactive charts, display symptom spikes, show disease clusters, visualize seasonal trends, create heatmaps, enable filtering and zooming
+
+#### Feature: Case Timeline Viewer
+- **Description**: Timeline showing patient progress, plan effectiveness, recurrence tracking, useful for chronic diseases, follow-ups, post-intervention improvement
+- **Inputs**: Patient case history, timeline data
+- **Outputs**: Rendered timeline visualization, progress indicators
+- **Behavior**: Fetch patient case history, render timeline with milestones, show progress indicators, display plan effectiveness, track recurrences, enable filtering by time period
+
+#### Feature: Knowledge Browser
+- **Description**: Browse extracted medical knowledge, textbook chunks, guidelines, Q&A pairs, research summaries - doctors can read foundational knowledge behind system insights
+- **Inputs**: Knowledge base data from API
+- **Outputs**: Rendered knowledge browser, searchable content
+- **Behavior**: Fetch knowledge base entries, display in searchable interface, show source information, enable filtering by domain, provide citation links
+
+#### Feature: Offline-First UI Mode
+- **Description**: LocalStorage caching, sync when back online, "Local-only" mode for rural clinics, alerts when sync is pending
+- **Inputs**: User actions, network status, cached data
+- **Outputs**: Offline-capable UI, sync status indicators
+- **Behavior**: Cache data in LocalStorage, detect network status, enable offline mode, queue sync requests, display sync status, alert when sync pending
+
+### Capability: Testing & Documentation
+Comprehensive testing and documentation for system reliability and usability.
+
+#### Feature: End-to-End Testing & Performance Benchmarks
+- **Description**: Measure latency, LLM reasoning time, embedding insert/query time, frontend rendering performance
+- **Inputs**: Test scenarios, performance targets
+- **Outputs**: Performance reports, benchmark results, latency metrics
+- **Behavior**: Execute E2E tests, measure API latency, benchmark embedding operations, test frontend rendering, generate performance reports, validate against targets
+
+#### Feature: Clinical Memory Documentation Suite
+- **Description**: Developer Docs, Clinician User Manual, Medical Compliance Notes, Qdrant Schema Reference, Frontend/Backend Architecture Diagrams
+- **Inputs**: System components, API specifications, architecture details
+- **Outputs**: Comprehensive documentation, user manuals, architecture diagrams
+- **Behavior**: Generate API documentation, create user manuals, document compliance features, provide schema references, create architecture diagrams, maintain documentation updates
+
+</rpg-method>
+

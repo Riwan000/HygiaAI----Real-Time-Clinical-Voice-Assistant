@@ -1,0 +1,83 @@
+# HygiaAI: Qdrant-Powered Clinical Memory System
+
+## Problem Statement
+In low-resource clinics, doctors lack centralized access to prior patient cases or institutional memory. HygiaAI solves this by remembering every clinical encounter, embedding it semantically, and enabling retrieval of the most relevant prior cases in seconds.
+
+## Capability Tree
+
+### Capability: Real-Time Medical Transcription
+- Live Audio Transcription
+- Transcript Storage & Indexing
+
+### Capability: Medical Entity Extraction & SOAP Summarization
+- Medical Entity Extraction
+- SOAP Note Generation
+- Data Storage & Vectorization
+
+### Capability: Clinical Memory & Similar Case Retrieval
+- Multimodal Embedding Storage
+- Similar Case Search
+- Temporal & Hybrid Filtering
+
+### Capability: RAG-based Clinical Insights
+- Context Retrieval & Aggregation
+- LLM-based Clinical Reasoning
+- Explainable Recommendations
+
+### Capability: Adaptive Learning Memory
+- Automatic Case Addition
+- Pattern Learning & Evolution
+- Periodic Reindexing
+
+### Capability: Multimodal Case Viewer
+- Case Retrieval Display
+- Similarity Visualization
+- Side-by-Side Case Comparison
+
+### Capability: Privacy & Compliance Layer
+- De-identification
+- Local-First Deployment
+- Audit Trail
+
+### Capability: Analytics & Pattern Discovery
+- Trend Analysis
+- Outbreak Detection
+- Pattern Discovery
+
+### Capability: Unified Clinical Memory API Layer
+- Unified API Endpoints
+- Multimodal Ingestion Orchestrator
+- Automated SOAP Note Generation Layer
+- Instant Similar Case Recall Engine
+- Context-Aware Case Summarizer
+- Lab Report Normalization & Embedding
+
+### Capability: Knowledge Intelligence & Trend Analysis
+- Cross-Patient Temporal Clustering
+- Regional Health Trend Analytics
+- Clinical Trust Score System
+
+### Capability: Deployment & Architecture
+- Offline Rural Deployment Kit
+- Rural Connectivity Sync Layer
+- Federated Memory Architecture (Phase 3 Ready)
+- Deployment Pipeline (Vercel + VPS/Ollama backend)
+
+### Capability: Frontend — Doctor Interface
+- Clinical Memory Dashboard (Doctor UI)
+- Multimodal Input UI
+- SOAP Note Viewer in UI
+- Outbreak & Trend Visualization UI
+- Case Timeline Viewer
+- Knowledge Browser
+- Offline-First UI Mode
+
+### Capability: Testing & Documentation
+- End-to-End Testing & Performance Benchmarks
+- Clinical Memory Documentation Suite
+
+### Capability: API & Agent Architecture
+- REST API Endpoints
+- EHR Integration
+- Agent Orchestration
+

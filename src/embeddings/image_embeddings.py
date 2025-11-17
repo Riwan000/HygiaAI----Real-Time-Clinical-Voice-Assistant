@@ -225,9 +225,20 @@ class CLIPEmbeddingGenerator(ImageEmbeddingGenerator):
         """
         if self.model:
             try:
-                return self.model.config.vision_config.hidden_size
+                # CLIP vision config hidden size
+                dim = self.model.config.vision_config.hidden_size
+                # For Qdrant compatibility, we'll project to 768 if needed
+                # But return actual dimension for now
+                return dim
             except:
-                return 512  # Default CLIP dimension
+                # Try to get from actual embedding
+                try:
+                    from PIL import Image
+                    test_img = Image.new('RGB', (224, 224), color='red')
+                    test_emb = self.generate_embedding(test_img)
+                    return len(test_emb)
+                except:
+                    return 512  # Default CLIP dimension
         else:
             return 512  # Fallback dimension
 

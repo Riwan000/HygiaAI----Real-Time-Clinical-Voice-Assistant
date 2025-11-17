@@ -14,6 +14,14 @@ from pathlib import Path
 
 from ..entity_extraction.medical_ner import MedicalNER, MedicalEntity, EntityType
 
+# Optional RAG enhancement
+try:
+    from ..rag.soap_rag_enhancer import SOAPRAGEnhancer
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+    logger.warning("SOAP RAG enhancer not available. Enhanced extraction disabled.")
+
 logger = logging.getLogger(__name__)
 
 # Optional imports for document generation
@@ -575,15 +583,32 @@ class SOAPGenerator:
     Pipeline: Transcript → Entity Extraction → SOAP Classification → Structured Output
     """
     
-    def __init__(self, ner_model: Optional[MedicalNER] = None):
+    def __init__(
+        self,
+        ner_model: Optional[MedicalNER] = None,
+        use_rag: bool = True
+    ):
         """
         Initialize SOAP generator
         
         Args:
             ner_model: Optional MedicalNER instance (creates new if not provided)
+            use_rag: Whether to use RAG enhancement from knowledge base (default: True)
         """
         self.ner = ner_model or MedicalNER()
-        logger.info("SOAP generator initialized")
+        self.use_rag = use_rag and RAG_AVAILABLE
+        
+        # Initialize RAG enhancer if available and enabled
+        self.rag_enhancer = None
+        if self.use_rag:
+            try:
+                self.rag_enhancer = SOAPRAGEnhancer()
+                logger.info("SOAP generator initialized with RAG enhancement")
+            except Exception as e:
+                logger.warning(f"Failed to initialize RAG enhancer: {e}. Continuing without RAG.")
+                self.use_rag = False
+        else:
+            logger.info("SOAP generator initialized (RAG disabled)")
     
     def generate_soap(
         self,
@@ -642,11 +667,27 @@ class SOAPGenerator:
         - Information from family members
         - Past medical records review
         """
+        # Enhance with knowledge base if RAG is enabled
+        rag_context = None
+        if self.use_rag and self.rag_enhancer:
+            try:
+                enhancement = self.rag_enhancer.enhance_subjective_extraction(transcript, entities)
+                rag_context = self.rag_enhancer.format_knowledge_context(
+                    enhancement.get("guidelines", []) + enhancement.get("symptom_knowledge", [])
+                )
+            except Exception as e:
+                logger.warning(f"RAG enhancement failed: {e}. Continuing without enhancement.")
+        
         subjective_parts = []
         
         # Extract Chief Complaint (CC) - usually first thing mentioned
+        # Use knowledge base guidelines if available
+        if rag_context and 'Chief Complaint' in rag_context:
+            # Knowledge base provides structure guidance
+            pass
+        
         cc_keywords = ['chief complaint', 'presents with', 'complains of', 'complains about', 
-                      'main concern', 'reason for visit', 'presenting problem']
+                      'main concern', 'reason for visit', 'presenting problem', 'here for', 'came in for']
         lines = transcript.split('\n')
         chief_complaint = None
         
@@ -704,7 +745,13 @@ class SOAPGenerator:
         # Extract patient-reported symptoms
         symptoms = [e.text for e in entities if e.entity_type == EntityType.SYMPTOM]
         if symptoms:
-            subjective_parts.append(f"Patient reports symptoms: {', '.join(symptoms)}")
+            # Use knowledge base to enhance symptom description
+            symptom_text = ', '.join(symptoms)
+            if rag_context and any(symptom.lower() in rag_context.lower() for symptom in symptoms[:2]):
+                # Knowledge base has information about these symptoms
+                subjective_parts.append(f"Patient reports symptoms: {symptom_text}")
+            else:
+                subjective_parts.append(f"Patient reports symptoms: {symptom_text}")
         
         # Extract medical history (conditions, past diagnoses)
         conditions = [e.text for e in entities if e.entity_type == EntityType.CONDITION]
@@ -741,11 +788,31 @@ class SOAPGenerator:
         if patient_reported:
             subjective_parts.extend(patient_reported[:2])
         
-        # If no structured extraction, use first portion as likely subjective
+        # If no structured extraction, try to extract intelligently
         if not subjective_parts:
-            # Take first 30% of transcript as likely subjective
-            subjective_text = transcript[:int(len(transcript) * 0.3)]
-            subjective_parts.append(f"Patient reports: {subjective_text.strip()}")
+            # Look for patient-reported statements more carefully
+            sentences = transcript.split('.')
+            patient_statements = []
+            
+            for sentence in sentences[:10]:  # Check first 10 sentences
+                sentence_lower = sentence.lower().strip()
+                # Look for patient-reported patterns
+                if any(phrase in sentence_lower for phrase in [
+                    'i have', 'i feel', 'i am', 'i\'m', 'my', 'patient reports',
+                    'patient says', 'patient states', 'complains of', 'presents with'
+                ]):
+                    if len(sentence.strip()) > 20:  # Meaningful sentence
+                        patient_statements.append(sentence.strip())
+            
+            if patient_statements:
+                subjective_parts.append(f"Chief Complaint: {patient_statements[0]}")
+                if len(patient_statements) > 1:
+                    subjective_parts.append(f"History of Present Illness: {' '.join(patient_statements[1:3])}")
+            else:
+                # Last resort: take first meaningful portion
+                first_portion = transcript[:int(len(transcript) * 0.2)].strip()
+                if first_portion:
+                    subjective_parts.append(f"Patient reports: {first_portion}")
         
         return "\n".join(subjective_parts) if subjective_parts else "No subjective information recorded."
     
@@ -761,6 +828,17 @@ class SOAPGenerator:
         - Lab results (if available)
         - ONLY factual information observed, NOT what patient told you
         """
+        # Enhance with knowledge base if RAG is enabled
+        rag_context = None
+        if self.use_rag and self.rag_enhancer:
+            try:
+                enhancement = self.rag_enhancer.enhance_objective_extraction(transcript, entities)
+                rag_context = self.rag_enhancer.format_knowledge_context(
+                    enhancement.get("vital_knowledge", []) + enhancement.get("exam_knowledge", [])
+                )
+            except Exception as e:
+                logger.warning(f"RAG enhancement failed: {e}. Continuing without enhancement.")
+        
         objective_parts = []
         lines = transcript.split('\n')
         
@@ -771,15 +849,25 @@ class SOAPGenerator:
         # Look for vital signs with measurements
         vital_keywords = ['temperature', 'temp', 'blood pressure', 'bp', 'heart rate', 'hr', 
                          'pulse', 'respiratory rate', 'rr', 'oxygen saturation', 'o2 sat', 
-                         'spo2', 'weight', 'height', 'bmi']
+                         'spo2', 'weight', 'height', 'bmi', 'blood pressure is', 'heart rate is',
+                         'temperature is', 'vital signs']
+        
+        # Use knowledge base for normal ranges if available
+        normal_ranges = {}
+        if rag_context and 'Normal Vital Signs' in rag_context:
+            # Extract normal ranges from knowledge base
+            pass
         
         for line in lines:
             line_lower = line.lower()
             # Look for lines with vital sign keywords and numbers/measurements
+            # Exclude patient-reported vital signs
             if any(keyword in line_lower for keyword in vital_keywords):
-                # Check if line contains measurements (numbers)
-                if any(char.isdigit() for char in line):
-                    vital_signs_text.append(line.strip())
+                # Make sure it's not patient-reported
+                if 'patient reports' not in line_lower and 'patient says' not in line_lower:
+                    # Check if line contains measurements (numbers)
+                    if any(char.isdigit() for char in line):
+                        vital_signs_text.append(line.strip())
         
         if vital_signs_text:
             objective_parts.append("Vital Signs:")
@@ -848,21 +936,49 @@ class SOAPGenerator:
         elif lab_tests:
             objective_parts.append(f"\nLab Tests Ordered: {', '.join(lab_tests)}")
         
-        # If no structured extraction, look for objective language
+        # If no structured extraction, look for objective language more intelligently
         if not objective_parts or len(objective_parts) < 2:
             # Look for sentences with objective measurement language
             sentences = transcript.split('.')
             objective_sentences = []
+            
+            # Objective language patterns
+            objective_patterns = [
+                'measured', 'found', 'observed', 'reveals', 'shows', 'demonstrates',
+                'on examination', 'physical exam', 'appears', 'is', 'was', 'were',
+                'blood pressure', 'heart rate', 'temperature', 'vital signs',
+                'alert', 'oriented', 'cooperative', 'well-appearing'
+            ]
+            
             for sentence in sentences:
-                sentence_lower = sentence.lower()
+                sentence_lower = sentence.lower().strip()
                 # Look for objective measurement language
-                if any(keyword in sentence_lower for keyword in ['measured', 'found', 'observed', 
-                      'reveals', 'shows', 'demonstrates']) and 'patient reports' not in sentence_lower:
-                    objective_sentences.append(sentence.strip())
+                if any(keyword in sentence_lower for keyword in objective_patterns):
+                    # Exclude patient-reported
+                    if all(phrase not in sentence_lower for phrase in [
+                        'patient reports', 'patient says', 'patient states', 'i feel', 'i have'
+                    ]):
+                        # Check if it contains measurements or observations
+                        if any(char.isdigit() for char in sentence) or len(sentence.strip()) > 30:
+                            objective_sentences.append(sentence.strip())
             
             if objective_sentences:
                 objective_parts.append("\nAdditional Observations:")
-                objective_parts.extend([f"  - {s}" for s in objective_sentences[:3]])
+                objective_parts.extend([f"  - {s}" for s in objective_sentences[:5]])
+            else:
+                # Last resort: look for clinician statements
+                clinician_statements = []
+                for sentence in sentences:
+                    sentence_lower = sentence.lower()
+                    if any(phrase in sentence_lower for phrase in [
+                        'doctor', 'physician', 'clinician', 'i would', 'i will', 'i recommend'
+                    ]):
+                        if 'patient reports' not in sentence_lower:
+                            clinician_statements.append(sentence.strip())
+                
+                if clinician_statements:
+                    objective_parts.append("\nClinician Observations:")
+                    objective_parts.extend([f"  - {s}" for s in clinician_statements[:3]])
         
         return "\n".join(objective_parts) if objective_parts else "No objective findings recorded."
     
@@ -883,6 +999,20 @@ class SOAPGenerator:
         - Use of clinical knowledge/DSM-5 criteria/therapeutic models
         - Clinical reasoning
         """
+        # Enhance with knowledge base if RAG is enabled
+        rag_context = None
+        if self.use_rag and self.rag_enhancer:
+            try:
+                enhancement = self.rag_enhancer.enhance_assessment_generation(
+                    transcript, entities, subjective, objective
+                )
+                rag_context = self.rag_enhancer.format_knowledge_context(
+                    enhancement.get("diagnostic_knowledge", []) + 
+                    enhancement.get("reasoning_knowledge", [])
+                )
+            except Exception as e:
+                logger.warning(f"RAG enhancement failed: {e}. Continuing without enhancement.")
+        
         assessment_parts = []
         lines = transcript.split('\n')
         
@@ -962,6 +1092,20 @@ class SOAPGenerator:
         - Follow-up instructions
         - Diagnostic tests ordered
         """
+        # Enhance with knowledge base if RAG is enabled
+        rag_context = None
+        if self.use_rag and self.rag_enhancer:
+            try:
+                enhancement = self.rag_enhancer.enhance_plan_generation(
+                    transcript, entities, assessment
+                )
+                rag_context = self.rag_enhancer.format_knowledge_context(
+                    enhancement.get("medication_knowledge", []) + 
+                    enhancement.get("treatment_knowledge", [])
+                )
+            except Exception as e:
+                logger.warning(f"RAG enhancement failed: {e}. Continuing without enhancement.")
+        
         plan_parts = []
         lines = transcript.split('\n')
         

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clear Cache</title>
+</head>
+<body>
+  <h1>Clearing Cache...</h1>
+  <pre id="output"></pre>
+  <script>
+    const output = document.getElementById('output');
+    
+    async function clearCache() {
+      const logs = [];
+      
+      // Unregister service workers
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const registration of registrations) {
+            await registration.unregister();
+            logs.push('✓ Unregistered service worker');
+          }
+        } catch (e) {
+          logs.push('✗ Error unregistering service worker: ' + e.message);
+        }
+      }
+      
+      // Clear all caches
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          for (const cacheName of cacheNames) {
+            await caches.delete(cacheName);
+            logs.push('✓ Deleted cache: ' + cacheName);
+          }
+        } catch (e) {
+          logs.push('✗ Error clearing caches: ' + e.message);
+        }
+      }
+      
+      // Clear localStorage
+      try {
+        localStorage.clear();
+        logs.push('✓ Cleared localStorage');
+      } catch (e) {
+        logs.push('✗ Error clearing localStorage: ' + e.message);
+      }
+      
+      // Clear sessionStorage
+      try {
+        sessionStorage.clear();
+        logs.push('✓ Cleared sessionStorage');
+      } catch (e) {
+        logs.push('✗ Error clearing sessionStorage: ' + e.message);
+      }
+      
+      output.textContent = logs.join('\n');
+      output.textContent += '\n\n✓ Cache cleared! Close this tab and refresh the main app.';
+    }
+    
+    clearCache();
+  </script>
+</body>
+</html>
+

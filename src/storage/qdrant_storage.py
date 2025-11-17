@@ -33,7 +33,7 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Qdrant client not available. Install with: pip install qdrant-client")
 
-from config import DEEPGRAM_API_KEY
+# DEEPGRAM_API_KEY not needed for Qdrant storage
 from .schema import (
     TranscriptSchema,
     StorageMetadata,

@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+/* Accessibility: Screen reader only class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only:focus,
+.sr-only:active {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: inherit;
+  margin: inherit;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* Accessibility: Focus visible styles */
+*:focus-visible {
+  outline: 2px solid #2563EB;
+  outline-offset: 2px;
+}
+
+/* Accessibility: Ensure minimum color contrast */
+/* Text on white: #0F172A (charcoal) = 16.5:1 contrast ratio ✅ */
+/* Text on dark: #FFFFFF = 21:1 contrast ratio ✅ */
+/* Primary button: #2563EB on white = 4.8:1 contrast ratio ✅ */
+/* Primary button text: white on #2563EB = 4.8:1 contrast ratio ✅ */
+
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Bright Light theme (default) */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #FFFFFF;
+  color: #0F172A;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #FFFFFF;
+  transition: background-color 0.3s ease;
+}
+
+/* Dark theme */
+.dark body {
+  background-color: #0F172A;
+  color: #FFFFFF;
+}
+
+.dark #root {
+  background-color: #0F172A;
+}
+
+/* Select elements - light theme */
+select,
+select option {
+  color: #0F172A;
+  background-color: #ffffff;
+}
+
+/* Select elements - dark theme */
+.dark select,
+.dark select option {
+  color: #FFFFFF;
+  background-color: #2563EB; /* primary blue */
+}
+
+/* Fallback styles if Tailwind doesn't load */
+.test-fallback {
+  padding: 20px;
+  background-color: #ffffff;
+  color: #000000;
+}
+

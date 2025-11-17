@@ -11,6 +11,9 @@ import logging
 from .visualization_api import router as visualization_router
 from .ehr_api import router as ehr_router
 from .compliance_api import router as compliance_router
+from .clinical_memory_api import router as clinical_memory_router
+from .federated_api import router as federated_router
+from .transcription_ws_api import router as transcription_ws_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +41,9 @@ app.add_middleware(
 app.include_router(visualization_router)
 app.include_router(ehr_router)
 app.include_router(compliance_router)
+app.include_router(clinical_memory_router)
+app.include_router(federated_router)
+app.include_router(transcription_ws_router)
 
 
 @app.get("/")
