@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
 import { registerServiceWorker } from './utils/serviceWorker';
+import { initErrorTracking, captureError } from './utils/errorTracking';
+import { initWebVitals } from './utils/performance';
 
 const rootElement = document.getElementById('root');
 
@@ -23,6 +25,35 @@ if (typeof window !== 'undefined') {
     windowReact: (window as any).React?.version || 'N/A',
   });
 }
+
+// Initialize error tracking (non-blocking)
+initErrorTracking().catch((error) => {
+  console.warn('Error tracking initialization failed (non-critical):', error);
+});
+
+// Initialize Web Vitals performance monitoring
+initWebVitals((metric) => {
+  // Log performance metrics in development
+  if (import.meta.env.DEV) {
+    console.log(`[Web Vital] ${metric.name}:`, metric.value, `(${metric.rating})`);
+  }
+});
+
+// Global error handler
+window.addEventListener('error', (event) => {
+  captureError(event.error || new Error(event.message), {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+// Unhandled promise rejection handler
+window.addEventListener('unhandledrejection', (event) => {
+  captureError(event.reason instanceof Error ? event.reason : new Error(String(event.reason)), {
+    type: 'unhandledrejection',
+  });
+});
 
 // Register service worker for offline support (non-blocking)
 registerServiceWorker().then((registration) => {

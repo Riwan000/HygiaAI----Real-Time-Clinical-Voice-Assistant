@@ -14,6 +14,7 @@ import { Timeline } from './pages/Timeline';
 import { Knowledge } from './pages/Knowledge';
 import { Settings } from './pages/Settings';
 import { MultimodalInput } from './pages/MultimodalInput';
+import { CaseViewer } from './pages/CaseViewer';
 
 function App() {
   try {
@@ -25,6 +26,7 @@ function App() {
             <Route path="/soap-notes" element={<SOAPNotes />} />
             <Route path="/transcription" element={<Transcription />} />
             <Route path="/multimodal-input" element={<MultimodalInput />} />
+            <Route path="/case-viewer" element={<CaseViewer />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/timeline" element={<Timeline />} />
             <Route path="/knowledge" element={<Knowledge />} />

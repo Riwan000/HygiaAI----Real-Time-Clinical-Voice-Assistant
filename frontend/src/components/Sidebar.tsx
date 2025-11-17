@@ -14,6 +14,7 @@ import {
   BookOpenIcon,
   Cog6ToothIcon,
   ArrowUpTrayIcon,
+  EyeIcon,
 } from '@heroicons/react/24/outline';
 import { clsx } from '../utils/clsx';
 
@@ -23,6 +24,7 @@ interface SidebarProps {
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
+  { name: 'Case Viewer', href: '/case-viewer', icon: EyeIcon },
   { name: 'SOAP Notes', href: '/soap-notes', icon: DocumentTextIcon },
   { name: 'Live Transcription', href: '/transcription', icon: MicrophoneIcon },
   { name: 'Multimodal Input', href: '/multimodal-input', icon: ArrowUpTrayIcon },

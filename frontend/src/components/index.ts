@@ -14,6 +14,7 @@ export { SimilarityScore } from './SimilarityScore';
 export { SearchBox } from './SearchBox';
 export { CaseFilters } from './CaseFilters';
 export { CaseComparison } from './CaseComparison';
+export { MultimodalCaseViewer } from './MultimodalCaseViewer';
 export { Pagination } from './Pagination';
 export { FileUpload } from './FileUpload';
 export { SOAPNoteViewer } from './SOAPNoteViewer';

@@ -96,6 +96,8 @@ export function SearchBox({
         <input
           ref={inputRef}
           type="text"
+          role="searchbox"
+          aria-label="Search symptoms, transcripts, or case descriptions"
           value={value}
           onChange={(e) => {
             onChange(e.target.value);
