@@ -513,6 +513,12 @@ export class TranscriptionService {
     language?: string;
     model?: string;
     error?: string;
+    soap_note?: {
+      subjective: string;
+      objective: string;
+      assessment: string;
+      plan: string;
+    };
   }>> {
     const formData = new FormData();
     formData.append('audio_file', file);
@@ -521,6 +527,8 @@ export class TranscriptionService {
     if (options?.smart_format !== undefined) formData.append('smart_format', String(options.smart_format));
     if (options?.punctuate !== undefined) formData.append('punctuate', String(options.punctuate));
     if (options?.diarize !== undefined) formData.append('diarize', String(options.diarize));
+    // Always generate SOAP note by default
+    formData.append('generate_soap', 'true');
 
     // Calculate timeout based on file size
     // Audio transcription: base 2 minutes + 1 minute per 10MB

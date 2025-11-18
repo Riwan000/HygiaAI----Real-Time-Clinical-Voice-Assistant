@@ -54,28 +54,35 @@ _regional_analytics: Optional[RegionalHealthAnalytics] = None
 _trust_score_system: Optional[ClinicalTrustScoreSystem] = None
 
 
-def get_qdrant_storage() -> QdrantStorage:
-    """Get or create Qdrant storage instance"""
-    global _qdrant_storage
-    if _qdrant_storage is None:
-        # Use URL if provided (for cloud), otherwise use host/port (for local)
-        qdrant_url = os.getenv("QDRANT_URL")
-        if qdrant_url:
-            _qdrant_storage = QdrantStorage(
-                url=qdrant_url,
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_cases",
-                vector_size=768
-            )
-        else:
-            _qdrant_storage = QdrantStorage(
-                host=os.getenv("QDRANT_HOST", "localhost"),
-                port=int(os.getenv("QDRANT_PORT", "6334")),
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_cases",
-                vector_size=768
-            )
-    return _qdrant_storage
+def get_qdrant_storage(collection_name: str = "hygiaai_cases") -> QdrantStorage:
+    """
+    Get or create Qdrant storage instance
+    
+    Args:
+        collection_name: Name of the collection to use
+            - "hygiaai_cases": Real-time patient cases from HygiaAI users
+            - "patient_memory_collection": Historical patient records (MIMIC, eICU, etc.)
+            - "clinical_kb_collection": Knowledge base (NCBI, PubMed, WHO, user uploads)
+            - "imaging_collection": Medical images (optional)
+            - "audio_collection": Audio datasets (optional)
+    """
+    # Use URL if provided (for cloud), otherwise use host/port (for local)
+    qdrant_url = os.getenv("QDRANT_URL")
+    if qdrant_url:
+        return QdrantStorage(
+            url=qdrant_url,
+            api_key=os.getenv("QDRANT_API_KEY"),
+            collection_name=collection_name,
+            vector_size=768
+        )
+    else:
+        return QdrantStorage(
+            host=os.getenv("QDRANT_HOST", "localhost"),
+            port=int(os.getenv("QDRANT_PORT", "6334")),
+            api_key=os.getenv("QDRANT_API_KEY"),
+            collection_name=collection_name,
+            vector_size=768
+        )
 
 
 def get_case_ingestion() -> CaseIngestionOrchestrator:
@@ -1206,27 +1213,18 @@ async def search_knowledge_base(request: KnowledgeSearchRequest):
         import time
         start_time = time.time()
         
-        # Create separate storage instance for knowledge base
-        qdrant_url = os.getenv("QDRANT_URL")
-        if qdrant_url:
-            knowledge_storage = QdrantStorage(
-                url=qdrant_url,
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
-        else:
-            knowledge_storage = QdrantStorage(
-                host=os.getenv("QDRANT_HOST", "localhost"),
-                port=int(os.getenv("QDRANT_PORT", "6334")),
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
+        # Use clinical_kb_collection for knowledge base searches
+        knowledge_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
+        
+        # Check if collection exists, create if it doesn't
+        try:
+            knowledge_storage.get_collection_info()
+        except Exception as e:
+            # Collection might not exist, try to create it
+            logger.warning(f"Collection 'clinical_kb_collection' not found, attempting to create: {e}")
+            # The collection will be created automatically by QdrantStorage._ensure_collection()
+            # Re-initialize to trigger collection creation
+            knowledge_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
         
         # Build filters
         filters = {}
@@ -1248,7 +1246,7 @@ async def search_knowledge_base(request: KnowledgeSearchRequest):
             # Scroll through all entries
             # Note: We'll filter client-side if filters are provided
             scroll_result = knowledge_storage.client.scroll(
-                collection_name="hygiaai_knowledge_base",
+                collection_name="clinical_kb_collection",
                 limit=request.limit * 2,  # Get more to account for filtering
                 with_payload=True,
                 with_vectors=False
@@ -1342,8 +1340,17 @@ async def search_knowledge_base(request: KnowledgeSearchRequest):
         )
         
     except Exception as e:
-        logger.error(f"Error searching knowledge base: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        logger.error(f"Error searching knowledge base: {e}", exc_info=True)
+        
+        # Check if it's a collection not found error
+        if "not found" in error_msg.lower() or "404" in error_msg.lower():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Knowledge base collection not found. Please run: python scripts/ingest_knowledge_base.py to populate the knowledge base."
+            )
+        
+        raise HTTPException(status_code=500, detail=f"Error searching knowledge base: {error_msg}")
 
 
 @router.get("/knowledge/domains", response_model=List[str])
@@ -1352,36 +1359,21 @@ async def get_knowledge_domains():
     Get available knowledge base domains
     """
     try:
-        # Create separate storage instance for knowledge base
-        qdrant_url = os.getenv("QDRANT_URL")
-        if qdrant_url:
-            knowledge_storage = QdrantStorage(
-                url=qdrant_url,
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
-        else:
-            knowledge_storage = QdrantStorage(
-                host=os.getenv("QDRANT_HOST", "localhost"),
-                port=int(os.getenv("QDRANT_PORT", "6334")),
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
+        # Use clinical_kb_collection for knowledge base searches
+        knowledge_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
         
         # Scroll through knowledge base to get unique domains
         # Note: This is a simplified approach. In production, you'd maintain a separate index
-        scroll_result = knowledge_storage.client.scroll(
-            collection_name="hygiaai_knowledge_base",
-            limit=1000,
-            with_payload=True,
-            with_vectors=False
-        )
+        try:
+            scroll_result = knowledge_storage.client.scroll(
+                collection_name=knowledge_storage.collection_name,
+                limit=1000,
+                with_payload=True,
+                with_vectors=False
+            )
+        except Exception as scroll_error:
+            logger.warning(f"Error scrolling collection for domains: {scroll_error}")
+            return []  # Return empty list if collection doesn't exist or is empty
         
         domains = set()
         for point in scroll_result[0]:
@@ -1402,35 +1394,20 @@ async def get_knowledge_sources():
     Get available knowledge base sources
     """
     try:
-        # Create separate storage instance for knowledge base
-        qdrant_url = os.getenv("QDRANT_URL")
-        if qdrant_url:
-            knowledge_storage = QdrantStorage(
-                url=qdrant_url,
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
-        else:
-            knowledge_storage = QdrantStorage(
-                host=os.getenv("QDRANT_HOST", "localhost"),
-                port=int(os.getenv("QDRANT_PORT", "6334")),
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
+        # Use clinical_kb_collection for knowledge base searches
+        knowledge_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
         
         # Scroll through knowledge base to get unique sources
-        scroll_result = knowledge_storage.client.scroll(
-            collection_name="hygiaai_knowledge_base",
-            limit=1000,
-            with_payload=True,
-            with_vectors=False
-        )
+        try:
+            scroll_result = knowledge_storage.client.scroll(
+                collection_name=knowledge_storage.collection_name,
+                limit=1000,
+                with_payload=True,
+                with_vectors=False
+            )
+        except Exception as scroll_error:
+            logger.warning(f"Error scrolling collection for sources: {scroll_error}")
+            return []  # Return empty list if collection doesn't exist or is empty
         
         sources = set()
         for point in scroll_result[0]:
@@ -1487,7 +1464,7 @@ async def upload_knowledge_file(
             "author": author or processed.get("metadata", {}).get("author", ""),
             "file_type": processed.get("file_type", file_ext[1:]),
             "filename": file.filename,
-            "provenance_url": f"file://{file.filename}",
+            "provenance_url": f"https://hygiaai.local/user-upload/{file.filename}",
             "version": "1.0",
             **processed.get("metadata", {})
         }
@@ -1505,27 +1482,8 @@ async def upload_knowledge_file(
             version="1.0"
         )
         
-        # Initialize knowledge base storage
-        qdrant_url = os.getenv("QDRANT_URL")
-        if qdrant_url:
-            knowledge_storage = QdrantStorage(
-                url=qdrant_url,
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
-        else:
-            knowledge_storage = QdrantStorage(
-                host=os.getenv("QDRANT_HOST", "localhost"),
-                port=int(os.getenv("QDRANT_PORT", "6334")),
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
+        # Initialize knowledge base storage - use clinical_kb_collection
+        knowledge_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
         
         # Initialize embedding generator
         embedder = BioBERTEmbeddingGenerator()

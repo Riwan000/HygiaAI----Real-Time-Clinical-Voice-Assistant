@@ -175,6 +175,7 @@ class TranscriptionResponse(BaseModel):
     language: Optional[str] = None
     model: Optional[str] = None
     error: Optional[str] = None
+    soap_note: Optional[Dict[str, str]] = None  # SOAP note with S, O, A, P sections
 
 
 @router.post("/file", response_model=TranscriptionResponse)
@@ -184,7 +185,12 @@ async def transcribe_audio_file(
     model: Optional[str] = Form("nova-2"),
     smart_format: Optional[bool] = Form(True),
     punctuate: Optional[bool] = Form(True),
-    diarize: Optional[bool] = Form(True)
+    diarize: Optional[bool] = Form(True),
+    generate_soap: Optional[bool] = Form(True),
+    patient_id: Optional[str] = Form(None),
+    age_group: Optional[str] = Form(None),
+    region: Optional[str] = Form(None),
+    comorbidities: Optional[str] = Form(None)
 ):
     """
     Transcribe an uploaded audio file using Deepgram
@@ -345,6 +351,52 @@ async def transcribe_audio_file(
                 
                 logger.info(f"Transcription complete: {len(transcript)} characters, {len(words)} words")
                 
+                # Generate SOAP note if requested and transcript is available
+                soap_note = None
+                if generate_soap and transcript and len(transcript.strip()) > 50:
+                    try:
+                        logger.info("Generating SOAP note from transcript...")
+                        from ..entity_extraction.soap_generator import SOAPGenerator
+                        
+                        # Parse comorbidities if provided
+                        comorbidities_list = []
+                        if comorbidities:
+                            try:
+                                comorbidities_list = json.loads(comorbidities) if isinstance(comorbidities, str) else comorbidities
+                            except:
+                                comorbidities_list = [comorbidities] if isinstance(comorbidities, str) else []
+                        
+                        # Initialize SOAP generator
+                        soap_generator = SOAPGenerator()
+                        
+                        # Prepare patient metadata
+                        patient_metadata = {}
+                        if age_group:
+                            patient_metadata["age_group"] = age_group
+                        if region:
+                            patient_metadata["region"] = region
+                        if comorbidities_list:
+                            patient_metadata["comorbidities"] = comorbidities_list
+                        
+                        # Generate SOAP note
+                        soap_result = soap_generator.generate_soap(
+                            transcript,
+                            patient_metadata=patient_metadata if patient_metadata else None
+                        )
+                        
+                        soap_note = {
+                            "subjective": soap_result.subjective,
+                            "objective": soap_result.objective,
+                            "assessment": soap_result.assessment,
+                            "plan": soap_result.plan
+                        }
+                        
+                        logger.info("✓ SOAP note generated successfully")
+                    except Exception as soap_error:
+                        logger.warning(f"Failed to generate SOAP note: {soap_error}")
+                        logger.debug(f"SOAP generation error details: {soap_error}", exc_info=True)
+                        # Don't fail the request if SOAP generation fails
+                
                 return TranscriptionResponse(
                     success=True,
                     transcript=transcript,
@@ -352,7 +404,8 @@ async def transcribe_audio_file(
                     confidence=confidence,
                     duration=duration,
                     language=language or "en-US",
-                    model=model or "nova-2"
+                    model=model or "nova-2",
+                    soap_note=soap_note
                 )
                 
         except (ImportError, AttributeError, ValueError, TypeError) as sdk_error:
@@ -413,6 +466,52 @@ async def transcribe_audio_file(
                     if result.get("metadata") and result["metadata"].get("duration"):
                         duration = result["metadata"]["duration"]
                     
+                    # Generate SOAP note if requested and transcript is available
+                    soap_note = None
+                    if generate_soap and transcript and len(transcript.strip()) > 50:
+                        try:
+                            logger.info("Generating SOAP note from transcript (REST API fallback path)...")
+                            from ..entity_extraction.soap_generator import SOAPGenerator
+                            
+                            # Parse comorbidities if provided
+                            comorbidities_list = []
+                            if comorbidities:
+                                try:
+                                    comorbidities_list = json.loads(comorbidities) if isinstance(comorbidities, str) else comorbidities
+                                except:
+                                    comorbidities_list = [comorbidities] if isinstance(comorbidities, str) else []
+                            
+                            # Initialize SOAP generator
+                            soap_generator = SOAPGenerator()
+                            
+                            # Prepare patient metadata
+                            patient_metadata = {}
+                            if age_group:
+                                patient_metadata["age_group"] = age_group
+                            if region:
+                                patient_metadata["region"] = region
+                            if comorbidities_list:
+                                patient_metadata["comorbidities"] = comorbidities_list
+                            
+                            # Generate SOAP note
+                            soap_result = soap_generator.generate_soap(
+                                transcript,
+                                patient_metadata=patient_metadata if patient_metadata else None
+                            )
+                            
+                            soap_note = {
+                                "subjective": soap_result.subjective,
+                                "objective": soap_result.objective,
+                                "assessment": soap_result.assessment,
+                                "plan": soap_result.plan
+                            }
+                            
+                            logger.info("✓ SOAP note generated successfully")
+                        except Exception as soap_error:
+                            logger.warning(f"Failed to generate SOAP note: {soap_error}")
+                            logger.debug(f"SOAP generation error details: {soap_error}", exc_info=True)
+                            # Don't fail the request if SOAP generation fails
+                    
                     return TranscriptionResponse(
                         success=True,
                         transcript=transcript,
@@ -420,7 +519,8 @@ async def transcribe_audio_file(
                         confidence=confidence,
                         duration=duration,
                         language=language or "en-US",
-                        model=model or "nova-2"
+                        model=model or "nova-2",
+                        soap_note=soap_note
                     )
         
     except Exception as e:

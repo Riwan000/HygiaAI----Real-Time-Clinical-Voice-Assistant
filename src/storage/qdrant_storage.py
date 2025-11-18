@@ -145,6 +145,20 @@ class QdrantStorage:
                     )
                 )
                 logger.info(f"Created collection: {self.collection_name} with vector_size={self.vector_size}")
+                
+                # Create index for doc_hash if this is a knowledge base collection
+                # This allows efficient duplicate checking during ingestion
+                if "knowledge" in self.collection_name.lower():
+                    try:
+                        from qdrant_client.models import PayloadSchemaType
+                        self.client.create_payload_index(
+                            collection_name=self.collection_name,
+                            field_name="doc_hash",
+                            field_schema=PayloadSchemaType.KEYWORD
+                        )
+                        logger.info(f"Created payload index for 'doc_hash' in {self.collection_name}")
+                    except Exception as index_error:
+                        logger.warning(f"Could not create doc_hash index (may already exist): {index_error}")
             else:
                 # Check if existing collection has correct vector size
                 collection_info = self.client.get_collection(self.collection_name)
@@ -156,6 +170,24 @@ class QdrantStorage:
                     )
                 else:
                     logger.info(f"Collection already exists: {self.collection_name} with vector_size={self.vector_size}")
+                
+                # Ensure doc_hash index exists for knowledge base collections
+                if "knowledge" in self.collection_name.lower():
+                    try:
+                        from qdrant_client.models import PayloadSchemaType
+                        # Try to create index (will fail silently if it already exists)
+                        try:
+                            self.client.create_payload_index(
+                                collection_name=self.collection_name,
+                                field_name="doc_hash",
+                                field_schema=PayloadSchemaType.KEYWORD
+                            )
+                            logger.info(f"Created payload index for 'doc_hash' in {self.collection_name}")
+                        except Exception:
+                            # Index likely already exists, which is fine
+                            pass
+                    except Exception as index_error:
+                        logger.debug(f"Could not create doc_hash index: {index_error}")
         except Exception as e:
             logger.error(f"Error ensuring collection: {e}")
             raise

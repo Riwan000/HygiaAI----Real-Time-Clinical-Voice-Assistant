@@ -168,7 +168,13 @@ const retryRequest = async (
     // Wait before retrying
     await new Promise((resolve) => setTimeout(resolve, retryConfig.delay * attempt));
 
-    return axiosInstance.request(config);
+    // Ensure timeout is preserved in retry
+    const retryRequestConfig: RequestConfig = {
+      ...config,
+      timeout: config.timeout ?? axiosInstance.defaults.timeout,
+    };
+
+    return axiosInstance.request(retryRequestConfig);
   }
 
   throw error;
@@ -227,8 +233,15 @@ export const apiRequest = async <T = any>(
 
   const axiosInstance = createAxiosInstance();
 
+  // Ensure timeout is applied to the request config
+  // Axios will use config.timeout if provided, otherwise defaults.timeout
+  const requestConfig: RequestConfig = {
+    ...config,
+    timeout: config.timeout ?? axiosInstance.defaults.timeout,
+  };
+
   try {
-    const response = await axiosInstance.request<T>(config);
+    const response = await axiosInstance.request<T>(requestConfig);
     
     // Cache successful GET responses for offline use
     if (config.method?.toUpperCase() === 'GET' && config.url) {
@@ -253,9 +266,9 @@ export const apiRequest = async <T = any>(
     };
   } catch (error: any) {
     // Handle retry logic
-    if (config.retry && error && typeof error === 'object' && error.isAxiosError) {
+    if (requestConfig.retry && error && typeof error === 'object' && error.isAxiosError) {
       try {
-        const retryResponse = await retryRequest(axiosInstance, config, error as AxiosError, 1);
+        const retryResponse = await retryRequest(axiosInstance, requestConfig, error as AxiosError, 1);
         return {
           success: true,
           data: retryResponse.data,

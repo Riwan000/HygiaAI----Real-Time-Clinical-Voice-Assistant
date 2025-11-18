@@ -617,7 +617,7 @@ class SOAPGenerator:
         patient_metadata: Optional[Dict[str, Any]] = None
     ) -> SOAPNote:
         """
-        Generate structured SOAP note from transcript
+        Generate structured SOAP note from transcript using LLM and knowledge base
         
         Args:
             transcript: Raw consultation transcript text
@@ -631,27 +631,338 @@ class SOAPGenerator:
         if entities is None:
             entities = self.ner.extract_entities(transcript)
         
-        # Classify content into SOAP sections
-        subjective = self._extract_subjective(transcript, entities)
-        objective = self._extract_objective(transcript, entities)
-        assessment = self._generate_assessment(transcript, entities, subjective, objective)
-        plan = self._generate_plan(transcript, entities, assessment)
+        # Retrieve relevant knowledge base information for RAG enhancement
+        kb_context = self._retrieve_knowledge_base_context(transcript, entities, patient_metadata)
+        
+        # Use LLM to generate structured SOAP note
+        soap_note = self._generate_soap_with_llm(transcript, entities, kb_context, patient_metadata)
         
         # Build metadata
         metadata = {
             "generated_at": datetime.utcnow().isoformat(),
             "entity_count": len(entities),
             "transcript_length": len(transcript),
-            "patient_metadata": patient_metadata or {}
+            "patient_metadata": patient_metadata or {},
+            "llm_generated": True,
+            "rag_enhanced": bool(kb_context)
         }
         
         return SOAPNote(
-            subjective=subjective,
-            objective=objective,
-            assessment=assessment,
-            plan=plan,
+            subjective=soap_note["subjective"],
+            objective=soap_note["objective"],
+            assessment=soap_note["assessment"],
+            plan=soap_note["plan"],
             metadata=metadata
         )
+    
+    def _retrieve_knowledge_base_context(
+        self,
+        transcript: str,
+        entities: List[MedicalEntity],
+        patient_metadata: Optional[Dict[str, Any]]
+    ) -> str:
+        """Retrieve relevant knowledge base context for SOAP generation"""
+        # Always try to retrieve knowledge base context for better SOAP structure
+        try:
+            import os
+            from src.storage.qdrant_storage import QdrantStorage
+            from src.embeddings import BioBERTEmbeddingGenerator
+            
+            # Use clinical_kb_collection for knowledge base
+            qdrant_url = os.getenv("QDRANT_URL")
+            if qdrant_url:
+                kb_storage = QdrantStorage(
+                    url=qdrant_url,
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="clinical_kb_collection",
+                    vector_size=768
+                )
+            else:
+                kb_storage = QdrantStorage(
+                    host=os.getenv("QDRANT_HOST", "localhost"),
+                    port=int(os.getenv("QDRANT_PORT", "6334")),
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="clinical_kb_collection",
+                    vector_size=768
+                )
+            
+            embedder = BioBERTEmbeddingGenerator()
+            
+            # Build query from transcript and entities
+            symptoms = [e.text for e in entities if e.entity_type == EntityType.SYMPTOM]
+            diagnoses = [e.text for e in entities if e.entity_type == EntityType.DIAGNOSIS]
+            diseases = [e.text for e in entities if e.entity_type == EntityType.DISEASE]
+            
+            # Retrieve SOAP note writing guidelines
+            soap_query = "SOAP note writing guide structure format subjective objective assessment plan"
+            soap_embedding = embedder.generate_embedding(soap_query)
+            soap_results = kb_storage.search_with_filters(
+                query_embedding=soap_embedding,
+                filters={"domain": "guidelines"},
+                limit=3,
+                score_threshold=0.3
+            )
+            
+            # Retrieve disease-specific information if diagnoses found
+            disease_results = []
+            if diagnoses or diseases:
+                disease_query = f"{' '.join((diagnoses + diseases)[:2])} clinical information diagnosis treatment"
+                disease_embedding = embedder.generate_embedding(disease_query)
+                disease_results = kb_storage.search_with_filters(
+                    query_embedding=disease_embedding,
+                    limit=3,
+                    score_threshold=0.3
+                )
+            
+            # Format knowledge base context
+            context_parts = []
+            
+            # Add SOAP guidelines
+            for result in soap_results:
+                payload = result.get("payload", {})
+                content = payload.get("content", "") or payload.get("text", "")
+                title = payload.get("title", "")
+                if content:
+                    context_parts.append(f"SOAP Guidelines ({title}):\n{content[:500]}")
+            
+            # Add disease information
+            for result in disease_results:
+                payload = result.get("payload", {})
+                content = payload.get("content", "") or payload.get("text", "")
+                title = payload.get("title", "")
+                if content:
+                    context_parts.append(f"Disease Information ({title}):\n{content[:500]}")
+            
+            return "\n\n".join(context_parts)
+            
+        except Exception as e:
+            logger.warning(f"Error retrieving knowledge base context: {e}")
+            return ""
+    
+    def _generate_soap_with_llm(
+        self,
+        transcript: str,
+        entities: List[MedicalEntity],
+        kb_context: str,
+        patient_metadata: Optional[Dict[str, Any]]
+    ) -> Dict[str, str]:
+        """Generate SOAP note using Gemini LLM with knowledge base context"""
+        try:
+            import os
+            import google.generativeai as genai
+            import json
+            
+            # Initialize Gemini
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                logger.warning("GOOGLE_API_KEY not found. Falling back to rule-based extraction.")
+                return self._generate_soap_rule_based(transcript, entities)
+            
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            
+            # Add patient metadata if available
+            metadata_text = ""
+            if patient_metadata:
+                metadata_parts = []
+                if patient_metadata.get("age_group"):
+                    metadata_parts.append(f"Age Group: {patient_metadata['age_group']}")
+                if patient_metadata.get("region"):
+                    metadata_parts.append(f"Region: {patient_metadata['region']}")
+                if patient_metadata.get("comorbidities"):
+                    comorbidities = patient_metadata["comorbidities"]
+                    if isinstance(comorbidities, list):
+                        metadata_parts.append(f"Comorbidities: {', '.join(comorbidities)}")
+                    else:
+                        metadata_parts.append(f"Comorbidities: {comorbidities}")
+                if metadata_parts:
+                    metadata_text = "\n".join(metadata_parts)
+            
+            # Extract key entities for context
+            symptoms = [e.text for e in entities if e.entity_type == EntityType.SYMPTOM]
+            diagnoses = [e.text for e in entities if e.entity_type == EntityType.DIAGNOSIS]
+            medications = [e.text for e in entities if e.entity_type == EntityType.MEDICATION]
+            
+            # Build main prompt with explicit extraction instructions
+            prompt = f"""You are a medical professional generating a structured SOAP note from a clinical consultation transcript.
+
+PATIENT INFORMATION:
+{metadata_text if metadata_text else "Not provided"}
+
+EXTRACTED MEDICAL ENTITIES:
+- Symptoms: {', '.join(symptoms) if symptoms else 'None identified'}
+- Diagnoses: {', '.join(diagnoses) if diagnoses else 'None identified'}
+- Medications: {', '.join(medications) if medications else 'None identified'}
+
+CONSULTATION TRANSCRIPT:
+{transcript[:3000] if len(transcript) > 3000 else transcript}
+
+CRITICAL INSTRUCTIONS:
+1. DO NOT copy the entire transcript verbatim into any section
+2. EXTRACT and SUMMARIZE only relevant information for each section
+3. Each section should be concise and contain only extracted, relevant information
+4. Use the knowledge base context to ensure clinical accuracy and proper structure
+5. Format each section with clear subsections using line breaks
+
+REQUIRED OUTPUT FORMAT:
+
+SUBJECTIVE (S) - Extract ONLY patient-reported information:
+- Chief Complaint: [Brief statement of main concern - 1-2 sentences]
+- History of Present Illness: [Key details about current symptoms, when they started, duration, severity - 3-5 sentences]
+- Medical History: [Relevant past conditions mentioned - bullet points]
+- Current Medications: [List medications mentioned - bullet points]
+- Social History: [Relevant social information if mentioned]
+
+OBJECTIVE (O) - Extract ONLY observable/measured findings:
+- Vital Signs: [Only if mentioned - e.g., "BP 120/80, HR 72, Temp 98.6F" or "Not documented"]
+- Physical Examination: [Only objective findings mentioned - bullet points or "Not documented"]
+- Appearance and Behavior: [Only if mentioned - e.g., "Alert, oriented, cooperative" or "Not documented"]
+- Lab/Test Results: [Only if mentioned - bullet points or "Not documented"]
+
+ASSESSMENT (A) - Extract clinical reasoning and diagnoses:
+- Primary Diagnosis: [Main diagnosis mentioned or inferred - 1-2 sentences]
+- Clinical Impression: [Clinical reasoning based on findings - 2-4 sentences]
+- Differential Diagnosis: [Other possibilities mentioned - bullet points or "None discussed"]
+- Clinical Reasoning: [Why this diagnosis fits - 2-3 sentences]
+
+PLAN (P) - Extract treatment plans and recommendations:
+- Medications: [Prescribed medications with dosages if mentioned - bullet points or "No new medications"]
+- Treatment Plan: [Treatment recommendations discussed - bullet points]
+- Diagnostic Tests/Orders: [Tests ordered or recommended - bullet points or "None"]
+- Follow-up Instructions: [When to return, monitoring - bullet points or "Not specified"]
+- Patient Instructions/Education: [Patient education provided - bullet points or "None"]
+
+CRITICAL RULES:
+- Each section must be DISTINCT and contain DIFFERENT information
+- DO NOT repeat the same information across sections
+- DO NOT include the full transcript in any section
+- Each section should be 50-300 words maximum
+- Use bullet points for lists
+- Use professional medical language
+- If information is not present, write "Not documented" or "Not mentioned"
+
+Generate ONLY a JSON object with this exact structure:
+{{
+    "subjective": "Chief Complaint: ...\\nHistory of Present Illness: ...\\nMedical History: ...\\nCurrent Medications: ...",
+    "objective": "Vital Signs: ...\\nPhysical Examination: ...\\nAppearance and Behavior: ...\\nLab/Test Results: ...",
+    "assessment": "Primary Diagnosis: ...\\nClinical Impression: ...\\nDifferential Diagnosis: ...\\nClinical Reasoning: ...",
+    "plan": "Medications: ...\\nTreatment Plan: ...\\nDiagnostic Tests/Orders: ...\\nFollow-up Instructions: ...\\nPatient Instructions/Education: ..."
+}}
+
+Return ONLY valid JSON, no additional text before or after.
+"""
+            
+            # Combine prompt parts if KB context exists
+            full_prompt = prompt
+            if kb_context:
+                full_prompt = f"""MEDICAL KNOWLEDGE BASE CONTEXT:
+{kb_context}
+
+Use the SOAP note writing guidelines above to structure your output properly.
+
+{prompt}"""
+            
+            # Generate response
+            response = model.generate_content(
+                full_prompt,
+                generation_config={
+                    "temperature": 0.2,  # Lower temperature for more structured output
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": 3000,  # Increased for better extraction
+                }
+            )
+            
+            # Parse JSON response
+            response_text = response.text.strip()
+            
+            # Try to extract JSON from response (may have markdown code blocks)
+            if "```json" in response_text:
+                json_start = response_text.find("```json") + 7
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end].strip()
+            elif "```" in response_text:
+                json_start = response_text.find("```") + 3
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end].strip()
+            
+            # Try to find JSON object boundaries if not in code blocks
+            if "{" in response_text and "}" in response_text:
+                json_start = response_text.find("{")
+                json_end = response_text.rfind("}") + 1
+                response_text = response_text[json_start:json_end]
+            
+            # Parse JSON
+            soap_data = json.loads(response_text)
+            
+            # Validate that sections don't contain the full transcript
+            transcript_length = len(transcript)
+            subjective = soap_data.get("subjective", "").strip()
+            objective = soap_data.get("objective", "").strip()
+            assessment = soap_data.get("assessment", "").strip()
+            plan = soap_data.get("plan", "").strip()
+            
+            # Check if any section is suspiciously long (likely contains full transcript)
+            max_section_length = min(transcript_length * 0.8, 2000)  # Max 80% of transcript or 2000 chars
+            
+            if len(subjective) > max_section_length:
+                logger.warning(f"Subjective section too long ({len(subjective)} chars), likely contains full transcript. Using rule-based fallback.")
+                return self._generate_soap_rule_based(transcript, entities)
+            if len(objective) > max_section_length:
+                logger.warning(f"Objective section too long ({len(objective)} chars), likely contains full transcript. Using rule-based fallback.")
+                return self._generate_soap_rule_based(transcript, entities)
+            if len(assessment) > max_section_length:
+                logger.warning(f"Assessment section too long ({len(assessment)} chars), likely contains full transcript. Using rule-based fallback.")
+                return self._generate_soap_rule_based(transcript, entities)
+            if len(plan) > max_section_length:
+                logger.warning(f"Plan section too long ({len(plan)} chars), likely contains full transcript. Using rule-based fallback.")
+                return self._generate_soap_rule_based(transcript, entities)
+            
+            # Check if sections are too similar (all contain same content)
+            if subjective == objective or subjective == assessment or subjective == plan:
+                logger.warning("SOAP sections are identical, likely contains full transcript. Using rule-based fallback.")
+                return self._generate_soap_rule_based(transcript, entities)
+            
+            # Validate and return
+            return {
+                "subjective": subjective if subjective else "No subjective information recorded.",
+                "objective": objective if objective else "No objective findings recorded.",
+                "assessment": assessment if assessment else "Assessment pending further evaluation.",
+                "plan": plan if plan else "Plan pending assessment completion."
+            }
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing LLM JSON response: {e}")
+            logger.error(f"Response text (first 500 chars): {response_text[:500]}")
+            logger.info("Falling back to rule-based extraction")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return self._generate_soap_rule_based(transcript, entities)
+        except Exception as e:
+            logger.error(f"Error generating SOAP with LLM: {e}")
+            logger.error(f"Response text (first 500 chars): {response_text[:500] if 'response_text' in locals() else 'N/A'}")
+            logger.info("Falling back to rule-based extraction")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return self._generate_soap_rule_based(transcript, entities)
+    
+    def _generate_soap_rule_based(
+        self,
+        transcript: str,
+        entities: List[MedicalEntity]
+    ) -> Dict[str, str]:
+        """Fallback rule-based SOAP generation"""
+        subjective = self._extract_subjective(transcript, entities)
+        objective = self._extract_objective(transcript, entities)
+        assessment = self._generate_assessment(transcript, entities, subjective, objective)
+        plan = self._generate_plan(transcript, entities, assessment)
+        
+        return {
+            "subjective": subjective,
+            "objective": objective,
+            "assessment": assessment,
+            "plan": plan
+        }
     
     def _extract_subjective(self, transcript: str, entities: List[MedicalEntity]) -> str:
         """

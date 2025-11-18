@@ -170,15 +170,28 @@ class KnowledgeIngestionPipeline:
             
             # Check if document already exists (idempotent ingestion)
             if not force_update:
-                # Check for existing document with same hash
-                existing_docs = self.qdrant_storage.search_with_filters(
-                    query_embedding=[0.0] * self.qdrant_storage.vector_size,  # Dummy embedding
-                    filters={"doc_hash": doc_hash},
-                    limit=1
-                )
-                if existing_docs:
-                    logger.info(f"Document already exists (hash: {doc_hash[:8]}...), skipping")
-                    return [existing_docs[0]["id"]]
+                try:
+                    # Check for existing document with same hash
+                    existing_docs = self.qdrant_storage.search_with_filters(
+                        query_embedding=[0.0] * self.qdrant_storage.vector_size,  # Dummy embedding
+                        filters={"doc_hash": doc_hash},
+                        limit=1
+                    )
+                    if existing_docs:
+                        logger.info(f"Document already exists (hash: {doc_hash[:8]}...), skipping")
+                        return [existing_docs[0]["id"]]
+                except Exception as dup_check_error:
+                    # If duplicate check fails (e.g., index not created), log and continue
+                    # This allows ingestion to proceed even if duplicate checking isn't available
+                    error_msg = str(dup_check_error)
+                    if "Index required" in error_msg or "doc_hash" in error_msg.lower():
+                        logger.warning(
+                            f"Duplicate check skipped (doc_hash index not available): {error_msg[:100]}. "
+                            f"Continuing with ingestion. To enable duplicate checking, create an index for 'doc_hash'."
+                        )
+                    else:
+                        # Re-raise if it's a different error
+                        raise
             
             # Prepare metadata
             if not metadata:
@@ -201,9 +214,11 @@ class KnowledgeIngestionPipeline:
             # Validate provenance URL
             provenance_url = document.get("provenance_url") or metadata.provenance_url if metadata else None
             if self.license_validator:
-                is_valid, error = self.license_validator.validate_provenance_url(provenance_url)
-                if not is_valid:
-                    raise ValueError(f"Invalid provenance URL: {error}")
+                # Skip validation for user uploads (hygiaai.local) or if URL is None
+                if provenance_url and not provenance_url.startswith("https://hygiaai.local/"):
+                    is_valid, error = self.license_validator.validate_provenance_url(provenance_url)
+                    if not is_valid:
+                        raise ValueError(f"Invalid provenance URL: {error}")
             
             # Validate license and access type (enforce open-access-only)
             if self.enforce_open_access and self.license_validator:

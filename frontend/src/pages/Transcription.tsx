@@ -53,6 +53,12 @@ export function Transcription() {
   const [isTranscribingFile, setIsTranscribingFile] = useState(false);
   const [fileTranscriptionResult, setFileTranscriptionResult] = useState<TranscriptionResult | null>(null);
   const [fileTranscriptionError, setFileTranscriptionError] = useState<string | null>(null);
+  const [fileSOAPNote, setFileSOAPNote] = useState<{
+    subjective: string;
+    objective: string;
+    assessment: string;
+    plan: string;
+  } | null>(null);
 
   // Early return if service failed to initialize
   if (!transcriptionService) {
@@ -315,6 +321,7 @@ export function Transcription() {
     setIsTranscribingFile(true);
     setFileTranscriptionError(null);
     setFileTranscriptionResult(null);
+    setFileSOAPNote(null); // Clear previous SOAP note
 
     try {
       const response = await TranscriptionService.transcribeFile(file, {
@@ -342,6 +349,11 @@ export function Transcription() {
           timestamp: Date.now(),
         };
         setFileTranscriptionResult(transcriptionResult);
+        
+        // Store SOAP note if available
+        if (response.data.soap_note) {
+          setFileSOAPNote(response.data.soap_note);
+        }
         
         // Add to results list for display
         setResults((prev) => [...prev, transcriptionResult]);
@@ -454,6 +466,60 @@ export function Transcription() {
                 <p className="text-sm text-green-800 dark:text-green-200">
                   File transcribed successfully! ({Math.round(fileTranscriptionResult.confidence * 100)}% confidence)
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* SOAP Note Display */}
+          {fileSOAPNote && (
+            <div className="mt-6 bg-white dark:bg-[#1E293B] rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <h3 className="text-lg font-semibold text-[#1E3A8A] dark:text-white mb-4">
+                📋 SOAP Note
+              </h3>
+              <div className="space-y-4">
+                {/* Subjective */}
+                <div>
+                  <h4 className="text-sm font-semibold text-[#0F172A] dark:text-white mb-2 flex items-center">
+                    <span className="inline-block w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 flex items-center justify-center mr-2 text-xs font-bold">S</span>
+                    Subjective
+                  </h4>
+                  <p className="text-sm text-[#64748B] dark:text-[#94A3B8] bg-slate/5 dark:bg-[#334155] p-3 rounded-lg whitespace-pre-wrap">
+                    {fileSOAPNote.subjective || 'No subjective information available.'}
+                  </p>
+                </div>
+
+                {/* Objective */}
+                <div>
+                  <h4 className="text-sm font-semibold text-[#0F172A] dark:text-white mb-2 flex items-center">
+                    <span className="inline-block w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 flex items-center justify-center mr-2 text-xs font-bold">O</span>
+                    Objective
+                  </h4>
+                  <p className="text-sm text-[#64748B] dark:text-[#94A3B8] bg-slate/5 dark:bg-[#334155] p-3 rounded-lg whitespace-pre-wrap">
+                    {fileSOAPNote.objective || 'No objective findings available.'}
+                  </p>
+                </div>
+
+                {/* Assessment */}
+                <div>
+                  <h4 className="text-sm font-semibold text-[#0F172A] dark:text-white mb-2 flex items-center">
+                    <span className="inline-block w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 flex items-center justify-center mr-2 text-xs font-bold">A</span>
+                    Assessment
+                  </h4>
+                  <p className="text-sm text-[#64748B] dark:text-[#94A3B8] bg-slate/5 dark:bg-[#334155] p-3 rounded-lg whitespace-pre-wrap">
+                    {fileSOAPNote.assessment || 'No assessment available.'}
+                  </p>
+                </div>
+
+                {/* Plan */}
+                <div>
+                  <h4 className="text-sm font-semibold text-[#0F172A] dark:text-white mb-2 flex items-center">
+                    <span className="inline-block w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 flex items-center justify-center mr-2 text-xs font-bold">P</span>
+                    Plan
+                  </h4>
+                  <p className="text-sm text-[#64748B] dark:text-[#94A3B8] bg-slate/5 dark:bg-[#334155] p-3 rounded-lg whitespace-pre-wrap">
+                    {fileSOAPNote.plan || 'No plan available.'}
+                  </p>
+                </div>
               </div>
             </div>
           )}

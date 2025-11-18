@@ -43,15 +43,27 @@ class SOAPRAGEnhancer:
         if not self.storage:
             # Initialize default storage
             import os
-            self.storage = QdrantStorage(
-                host=os.getenv("QDRANT_HOST", "localhost"),
-                port=int(os.getenv("QDRANT_PORT", "6334")),
-                api_key=os.getenv("QDRANT_API_KEY"),
-                collection_name="hygiaai_knowledge_base",
-                vector_size=768,
-                enable_encryption=False,
-                enable_deidentification=False
-            )
+            # Use clinical_kb_collection for knowledge base
+            qdrant_url = os.getenv("QDRANT_URL")
+            if qdrant_url:
+                self.storage = QdrantStorage(
+                    url=qdrant_url,
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="clinical_kb_collection",
+                    vector_size=768,
+                    enable_encryption=False,
+                    enable_deidentification=False
+                )
+            else:
+                self.storage = QdrantStorage(
+                    host=os.getenv("QDRANT_HOST", "localhost"),
+                    port=int(os.getenv("QDRANT_PORT", "6334")),
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="clinical_kb_collection",
+                    vector_size=768,
+                    enable_encryption=False,
+                    enable_deidentification=False
+                )
         
         logger.info("SOAP RAG enhancer initialized")
     
