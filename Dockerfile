@@ -1,5 +1,22 @@
 # Multi-stage Dockerfile optimized for Railway deployment
-# Stage 1: Build dependencies
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend package files
+COPY frontend/package*.json ./
+
+# Install frontend dependencies
+RUN npm ci --only=production=false
+
+# Copy frontend source
+COPY frontend/ ./
+
+# Build frontend for production
+RUN npm run build
+
+# Stage 2: Build Python dependencies
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
@@ -124,6 +141,9 @@ COPY config/ ./config/
 COPY run_server.py .
 COPY start_server.sh .
 COPY start_server.py .
+
+# Copy built frontend from frontend-builder stage
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Make startup scripts executable
 RUN chmod +x start_server.sh start_server.py

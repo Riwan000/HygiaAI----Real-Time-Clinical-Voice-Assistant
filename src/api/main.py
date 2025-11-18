@@ -7,6 +7,8 @@ Main entry point for the HygiaAI API server.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 import logging
 import os
 
@@ -103,6 +105,30 @@ async def lifespan(app: FastAPI):
     
     # App shutdown
     logger.info("Shutting down application...")
+    
+    # Register frontend catch-all route AFTER all routers are loaded
+    # This ensures API routes take precedence
+    if _frontend_available:
+        @app.get("/{full_path:path}")
+        async def serve_frontend(full_path: str):
+            """Serve frontend for all non-API routes (SPA routing)"""
+            # Don't serve frontend for API routes or docs (shouldn't reach here, but safety check)
+            if full_path.startswith(("api/", "docs", "redoc", "openapi.json", "health")):
+                return JSONResponse(
+                    status_code=404,
+                    content={"detail": "Not found"}
+                )
+            
+            # Serve index.html for SPA routing
+            index_file = frontend_dist / "index.html"
+            if index_file.exists():
+                from fastapi.responses import FileResponse
+                return FileResponse(str(index_file))
+            
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Frontend not found"}
+            )
 
 # Create FastAPI app with lifespan - routers will load AFTER startup
 # This ensures the health endpoint is available immediately
@@ -150,14 +176,34 @@ async def health_check():
     # Simple response for Railway healthcheck - must be fast!
     return {"status": "ok"}
 
+# Check if frontend is available
+frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+_frontend_available = frontend_dist.exists()
+
+if _frontend_available:
+    # Mount static files (CSS, JS, images, etc.)
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    logger.info(f"Frontend static files mounted from: {frontend_dist}")
+else:
+    logger.info("Frontend not found - serving API only")
+
 @app.get("/")
 async def root():
     """Root endpoint"""
+    if _frontend_available:
+        # Serve frontend index.html
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(index_file))
+    
+    # Fallback: API info if frontend not available
     return {
         "message": "HygiaAI Clinical Voice Assistant API",
         "version": "1.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "frontend": "available" if _frontend_available else "not included"
     }
 
 
