@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { existsSync } from 'fs'
 
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -85,15 +86,6 @@ export default defineConfig({
     // Ensure unique filenames with hash
     rollupOptions: {
       output: {
-        // Add build timestamp to filenames for cache busting
-        entryFileNames: `assets/js/[name]-[hash]-${Date.now()}.js`,
-        chunkFileNames: `assets/js/[name]-[hash]-${Date.now()}.js`,
-    commonjsOptions: {
-      include: [/node_modules/],
-      transformMixedEsModules: true,
-    },
-    rollupOptions: {
-      output: {
         manualChunks: (id) => {
           // React vendor chunk
           if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
@@ -132,6 +124,10 @@ export default defineConfig({
         preset: 'recommended',
         moduleSideEffects: false,
       },
+    },
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
     },
   },
 })
