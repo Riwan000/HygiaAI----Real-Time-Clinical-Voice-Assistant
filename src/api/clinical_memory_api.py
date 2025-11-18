@@ -461,13 +461,19 @@ async def ingest_multimodal(
                     query_text = transcript_text
                 elif text_file:
                     # Re-read text file content
-                    text_content = await text_file.read()
-                    query_text = text_content.decode("utf-8")
+                    try:
+                        await text_file.seek(0)  # Reset file pointer
+                        text_content = await text_file.read()
+                        query_text = text_content.decode("utf-8")
+                    except Exception as seek_error:
+                        logger.warning(f"Could not re-read text_file: {seek_error}, using existing content")
+                        if "text" in modalities:
+                            query_text = modalities["text"].content.get("transcript", "")
                 elif "text" in modalities:
                     query_text = modalities["text"].content.get("transcript", "")
                 
                 # Also include metadata in query for better context
-                if query_text:
+                if query_text and len(query_text.strip()) > 10:  # Only generate if we have meaningful text
                     # Build enriched query text
                     enriched_query = query_text
                     if diagnosis:
@@ -477,33 +483,64 @@ async def ingest_multimodal(
                     if age_group:
                         enriched_query += f"\n\nAge Group: {age_group}"
                     
-                    # Generate RAG insights
+                    # Generate RAG insights with timeout protection
                     logger.info(f"Generating RAG-based suggestions for case {case.case_id}...")
-                    rag = get_clinical_rag()
                     
-                    from ..rag.clinical_rag import RAGOptions
-                    rag_options = RAGOptions(
-                        retrieval_limit=5,
-                        include_knowledge_base=True,  # Include knowledge base in retrieval
-                        generate_differential_diagnoses=True,
-                        generate_recommendations=True,
-                        generate_summary=True,
-                        temperature=0.3
-                    )
-                    
-                    insight = rag.generate_insights(
-                        query_text=enriched_query,
-                        query_case=case,
-                        options=rag_options
-                    )
-                    
-                    # Convert insight to dictionary for response
-                    rag_suggestions = insight.to_dict()
-                    logger.info(f"✓ RAG suggestions generated successfully")
-                    
-                    # Store summary in knowledge base if available
-                    if insight.summary:
+                    try:
+                        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+                        
+                        rag = get_clinical_rag()
+                        
+                        from ..rag.clinical_rag import RAGOptions
+                        rag_options = RAGOptions(
+                            retrieval_limit=5,
+                            include_knowledge_base=True,  # Include knowledge base in retrieval
+                            generate_differential_diagnoses=True,
+                            generate_recommendations=True,
+                            generate_summary=True,
+                            temperature=0.3
+                        )
+                        
+                        # Run RAG generation in thread pool with timeout
+                        def run_rag_generation():
+                            return rag.generate_insights(
+                                query_text=enriched_query,
+                                query_case=case,
+                                options=rag_options
+                            )
+                        
+                        # Use thread pool executor with timeout
+                        executor = ThreadPoolExecutor(max_workers=1)
+                        future = executor.submit(run_rag_generation)
+                        
+                        insight = None
                         try:
+                            # Wait for RAG generation with 30 second timeout
+                            insight = future.result(timeout=30.0)
+                            
+                            # Convert insight to dictionary for response
+                            rag_suggestions = insight.to_dict()
+                            logger.info(f"✓ RAG suggestions generated successfully")
+                            
+                        except FutureTimeoutError:
+                            logger.warning(f"RAG generation timed out after 30 seconds for case {case.case_id}")
+                            rag_suggestions = {
+                                "error": "RAG generation timed out",
+                                "message": "Clinical suggestions generation took too long. The patient data was stored successfully."
+                            }
+                            future.cancel()
+                        except Exception as rag_exec_error:
+                            logger.error(f"Error during RAG generation execution: {rag_exec_error}", exc_info=True)
+                            rag_suggestions = {
+                                "error": "RAG generation failed",
+                                "message": str(rag_exec_error)
+                            }
+                        finally:
+                            executor.shutdown(wait=False)
+                            
+                        # Store summary in knowledge base if available (only if RAG succeeded)
+                        if insight and insight.summary:
+                            try:
                             from src.storage.knowledge_ingestion import KnowledgeIngestionPipeline
                             from src.storage.schema import KnowledgeBaseMetadata, EmbeddingType, AccessType
                             from src.embeddings import BioBERTEmbeddingGenerator
