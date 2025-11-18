@@ -94,6 +94,10 @@ ENV PATH=/root/.local/bin:$PATH
 COPY src/ ./src/
 COPY config/ ./config/
 COPY run_server.py .
+COPY start_server.sh .
+
+# Make startup script executable
+RUN chmod +x start_server.sh
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/logs /app/.cache
@@ -112,6 +116,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application (Railway provides $PORT)
-# Use shell form to expand PORT variable
-CMD ["sh", "-c", "uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run the application (Railway provides $PORT via railway.json startCommand)
+# This CMD is a fallback - Railway will use startCommand from railway.json
+# Use the startup script for better error handling
+CMD ["./start_server.sh"]
