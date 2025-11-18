@@ -32,17 +32,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements
 COPY requirements.txt .
 
-# Install Python dependencies with optimizations
-# Use CPU-only PyTorch to reduce image size significantly (from ~8GB to ~2GB)
+# Upgrade pip first
+RUN pip install --no-cache-dir --user --upgrade pip setuptools wheel
+
+# Install PyTorch CPU-only versions separately for better reliability
+# Split into separate RUN commands to avoid timeout issues
 RUN pip install --no-cache-dir --user \
-    --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir --user \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch==2.1.0+cpu \
-    torchvision==0.16.0+cpu \
-    torchaudio==2.1.0+cpu && \
-    pip install --no-cache-dir --user \
-    -r requirements.txt
+    torch==2.1.0+cpu || \
+    (pip install --no-cache-dir --user --upgrade pip && \
+     pip install --no-cache-dir --user \
+     --extra-index-url https://download.pytorch.org/whl/cpu \
+     torch==2.1.0+cpu)
+
+RUN pip install --no-cache-dir --user \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torchvision==0.16.0+cpu || \
+    (pip install --no-cache-dir --user --upgrade pip && \
+     pip install --no-cache-dir --user \
+     --extra-index-url https://download.pytorch.org/whl/cpu \
+     torchvision==0.16.0+cpu)
+
+# Install torchaudio only if needed (optional, can skip if not used)
+RUN pip install --no-cache-dir --user \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torchaudio==2.1.0+cpu || echo "Warning: torchaudio installation failed, continuing..."
+
+# Install other Python dependencies
+RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Stage 3: Runtime image
 FROM python:3.11-slim
