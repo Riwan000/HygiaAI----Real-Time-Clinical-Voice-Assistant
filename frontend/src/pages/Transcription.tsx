@@ -26,8 +26,11 @@ import {
   ClockIcon,
   ArrowUpTrayIcon,
   DocumentArrowUpIcon,
+  ArrowDownTrayIcon,
+  DocumentArrowDownIcon,
 } from '@heroicons/react/24/outline';
 import { clsx } from '../utils/clsx';
+import { API_BASE_URL } from '../utils/constants';
 
 export function Transcription() {
   const [transcriptionService] = useState(() => {
@@ -58,6 +61,14 @@ export function Transcription() {
     objective: string;
     assessment: string;
     plan: string;
+    patient_info?: {
+      name?: string;
+      patient_id?: string;
+      dob?: string;
+      age?: string;
+      gender?: string;
+      contact?: string;
+    };
   } | null>(null);
 
   // Early return if service failed to initialize
@@ -385,6 +396,52 @@ export function Transcription() {
     }
   };
 
+  const handleDownloadSOAP = async (format: 'pdf' | 'docx') => {
+    if (!fileSOAPNote) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('soap_note', JSON.stringify(fileSOAPNote));
+      if (fileSOAPNote.patient_info) {
+        formData.append('patient_info', JSON.stringify(fileSOAPNote.patient_info));
+      }
+      formData.append('format', format);
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/transcription/soap/download`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download SOAP report: ${response.statusText}`);
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `SOAP_Note_${new Date().toISOString().split('T')[0]}.${format}`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Download file
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      console.error('Error downloading SOAP report:', error);
+      setFileTranscriptionError(error.message || 'Failed to download SOAP report');
+    }
+  };
+
   return (
     <div>
       <Breadcrumbs items={[{ name: 'Live Transcription' }]} />
@@ -473,9 +530,75 @@ export function Transcription() {
           {/* SOAP Note Display */}
           {fileSOAPNote && (
             <div className="mt-6 bg-white dark:bg-[#1E293B] rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-[#1E3A8A] dark:text-white mb-4">
-                📋 SOAP Note
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[#1E3A8A] dark:text-white">
+                  📋 SOAP Note
+                </h3>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleDownloadSOAP('pdf')}
+                    className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+                  >
+                    <DocumentArrowDownIcon className="h-4 w-4" />
+                    <span>Download PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handleDownloadSOAP('docx')}
+                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+                  >
+                    <DocumentArrowDownIcon className="h-4 w-4" />
+                    <span>Download DOCX</span>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Patient Information */}
+              {fileSOAPNote.patient_info && Object.keys(fileSOAPNote.patient_info).length > 0 && (
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <h4 className="text-sm font-semibold text-[#1E3A8A] dark:text-blue-300 mb-3">
+                    👤 Patient Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    {fileSOAPNote.patient_info.name && fileSOAPNote.patient_info.name !== 'Not documented' && (
+                      <div>
+                        <span className="font-medium text-[#64748B] dark:text-[#94A3B8]">Name: </span>
+                        <span className="text-[#0F172A] dark:text-white">{fileSOAPNote.patient_info.name}</span>
+                      </div>
+                    )}
+                    {fileSOAPNote.patient_info.patient_id && fileSOAPNote.patient_info.patient_id !== 'Not documented' && (
+                      <div>
+                        <span className="font-medium text-[#64748B] dark:text-[#94A3B8]">Patient ID: </span>
+                        <span className="text-[#0F172A] dark:text-white">{fileSOAPNote.patient_info.patient_id}</span>
+                      </div>
+                    )}
+                    {fileSOAPNote.patient_info.age && fileSOAPNote.patient_info.age !== 'Not documented' && (
+                      <div>
+                        <span className="font-medium text-[#64748B] dark:text-[#94A3B8]">Age: </span>
+                        <span className="text-[#0F172A] dark:text-white">{fileSOAPNote.patient_info.age}</span>
+                      </div>
+                    )}
+                    {fileSOAPNote.patient_info.gender && fileSOAPNote.patient_info.gender !== 'Not documented' && (
+                      <div>
+                        <span className="font-medium text-[#64748B] dark:text-[#94A3B8]">Gender: </span>
+                        <span className="text-[#0F172A] dark:text-white">{fileSOAPNote.patient_info.gender}</span>
+                      </div>
+                    )}
+                    {fileSOAPNote.patient_info.dob && fileSOAPNote.patient_info.dob !== 'Not documented' && (
+                      <div>
+                        <span className="font-medium text-[#64748B] dark:text-[#94A3B8]">Date of Birth: </span>
+                        <span className="text-[#0F172A] dark:text-white">{fileSOAPNote.patient_info.dob}</span>
+                      </div>
+                    )}
+                    {fileSOAPNote.patient_info.contact && fileSOAPNote.patient_info.contact !== 'Not documented' && (
+                      <div className="md:col-span-2">
+                        <span className="font-medium text-[#64748B] dark:text-[#94A3B8]">Contact: </span>
+                        <span className="text-[#0F172A] dark:text-white">{fileSOAPNote.patient_info.contact}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-4">
                 {/* Subjective */}
                 <div>

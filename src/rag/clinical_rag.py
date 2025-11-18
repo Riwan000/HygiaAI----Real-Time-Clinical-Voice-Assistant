@@ -266,6 +266,18 @@ class ClinicalRAG:
                     context_parts.append(f"Transcript: {transcript}")
             context_parts.append("")
         
+        # Add patient history summary if patient_id is available
+        if query_case and query_case.patient_id:
+            patient_history_summary = self._retrieve_patient_history_summary(
+                query_case.patient_id,
+                query_text,
+                options
+            )
+            if patient_history_summary:
+                context_parts.append("=== PATIENT HISTORY SUMMARY ===")
+                context_parts.append(patient_history_summary)
+                context_parts.append("")
+        
         # Add similar cases
         if options.include_similar_cases and retrieved_results:
             context_parts.append("=== SIMILAR PAST CASES ===")
@@ -296,6 +308,87 @@ class ClinicalRAG:
                 context_parts.append("")
         
         return "\n".join(context_parts)
+    
+    def _retrieve_patient_history_summary(
+        self,
+        patient_id: str,
+        query_text: str,
+        options: RAGOptions
+    ) -> str:
+        """Retrieve and summarize patient history from patient_memory_collection"""
+        try:
+            import os
+            from src.storage.qdrant_storage import QdrantStorage
+            from src.embeddings import BioBERTEmbeddingGenerator
+            
+            # Connect to patient_memory_collection
+            qdrant_url = os.getenv("QDRANT_URL")
+            if qdrant_url:
+                patient_storage = QdrantStorage(
+                    url=qdrant_url,
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="patient_memory_collection",
+                    vector_size=768
+                )
+            else:
+                patient_storage = QdrantStorage(
+                    host=os.getenv("QDRANT_HOST", "localhost"),
+                    port=int(os.getenv("QDRANT_PORT", "6334")),
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="patient_memory_collection",
+                    vector_size=768
+                )
+            
+            # Generate query embedding
+            embedder = BioBERTEmbeddingGenerator()
+            query_embedding = embedder.generate_embedding(query_text[:500])
+            
+            # Search for patient records
+            filters = {"patient_id": patient_id} if patient_id else None
+            patient_results = patient_storage.search_with_filters(
+                query_embedding=query_embedding,
+                filters=filters,
+                limit=5,
+                score_threshold=0.3
+            )
+            
+            if not patient_results:
+                return ""
+            
+            # Summarize patient history
+            history_parts = []
+            for i, result in enumerate(patient_results[:5], 1):  # Limit to top 5
+                payload = result.get("payload", {})
+                content = payload.get("transcript", "") or payload.get("content", "") or payload.get("text", "")
+                
+                if content:
+                    metadata_info = []
+                    if payload.get("diagnosis"):
+                        metadata_info.append(f"Diagnosis: {payload.get('diagnosis')}")
+                    if payload.get("age_group"):
+                        metadata_info.append(f"Age: {payload.get('age_group')}")
+                    if payload.get("comorbidities"):
+                        comorbidities = payload.get("comorbidities")
+                        if isinstance(comorbidities, list):
+                            metadata_info.append(f"Comorbidities: {', '.join(comorbidities)}")
+                        elif comorbidities:
+                            metadata_info.append(f"Comorbidities: {comorbidities}")
+                    
+                    history_entry = f"Visit {i}"
+                    if metadata_info:
+                        history_entry += f" ({'; '.join(metadata_info)})"
+                    history_entry += f": {content[:200]}..."
+                    
+                    history_parts.append(history_entry)
+            
+            if history_parts:
+                return "\n".join(history_parts)
+            
+            return ""
+            
+        except Exception as e:
+            logger.warning(f"Error retrieving patient history summary: {e}")
+            return ""
     
     def _build_prompt(
         self,

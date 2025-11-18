@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.routing import APIRouter
+from fastapi.responses import FileResponse, StreamingResponse
 import websockets
 from websockets.exceptions import ConnectionClosed
 from pydantic import BaseModel
@@ -175,7 +176,7 @@ class TranscriptionResponse(BaseModel):
     language: Optional[str] = None
     model: Optional[str] = None
     error: Optional[str] = None
-    soap_note: Optional[Dict[str, str]] = None  # SOAP note with S, O, A, P sections
+    soap_note: Optional[Dict[str, Any]] = None  # SOAP note with S, O, A, P sections and patient_info
 
 
 @router.post("/file", response_model=TranscriptionResponse)
@@ -388,7 +389,8 @@ async def transcribe_audio_file(
                             "subjective": soap_result.subjective,
                             "objective": soap_result.objective,
                             "assessment": soap_result.assessment,
-                            "plan": soap_result.plan
+                            "plan": soap_result.plan,
+                            "patient_info": soap_result.patient_info or {}
                         }
                         
                         logger.info("✓ SOAP note generated successfully")
@@ -503,7 +505,8 @@ async def transcribe_audio_file(
                                 "subjective": soap_result.subjective,
                                 "objective": soap_result.objective,
                                 "assessment": soap_result.assessment,
-                                "plan": soap_result.plan
+                                "plan": soap_result.plan,
+                                "patient_info": soap_result.patient_info or {}
                             }
                             
                             logger.info("✓ SOAP note generated successfully")
@@ -536,4 +539,103 @@ async def transcribe_audio_file(
                 os.unlink(temp_file)
             except Exception as e:
                 logger.warning(f"Failed to delete temp file {temp_file}: {e}")
+
+
+@router.post("/soap/download")
+async def download_soap_report(
+    soap_note: str = Form(...),  # JSON string of SOAP note
+    patient_info: Optional[str] = Form(None),  # JSON string of patient info
+    clinician_info: Optional[str] = Form(None),  # JSON string of clinician info
+    format: str = Form("pdf")  # "pdf" or "docx"
+):
+    """
+    Download SOAP report as PDF or DOCX
+    
+    Args:
+        soap_note: JSON string containing SOAP note sections (subjective, objective, assessment, plan)
+        patient_info: Optional JSON string containing patient information
+        clinician_info: Optional JSON string containing clinician information
+        format: Output format - "pdf" or "docx"
+    """
+    try:
+        import json
+        from ..entity_extraction.soap_generator import SOAPGenerator, SOAPNote
+        from datetime import datetime
+        
+        # Parse JSON inputs
+        soap_data = json.loads(soap_note)
+        patient_data = json.loads(patient_info) if patient_info else None
+        clinician_data = json.loads(clinician_info) if clinician_info else None
+        
+        # Create SOAPNote object
+        soap_note_obj = SOAPNote(
+            subjective=soap_data.get("subjective", ""),
+            objective=soap_data.get("objective", ""),
+            assessment=soap_data.get("assessment", ""),
+            plan=soap_data.get("plan", ""),
+            metadata={
+                "generated_at": datetime.utcnow().isoformat(),
+                "export_format": format
+            },
+            patient_info=soap_data.get("patient_info") or patient_data
+        )
+        
+        # Create temporary file
+        file_ext = ".pdf" if format.lower() == "pdf" else ".docx"
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
+        temp_path = temp_file.name
+        temp_file.close()
+        
+        # Export SOAP note
+        if format.lower() == "pdf":
+            success = soap_note_obj.export_to_pdf(
+                temp_path,
+                patient_info=soap_note_obj.patient_info,
+                clinician_info=clinician_data
+            )
+            media_type = "application/pdf"
+        elif format.lower() == "docx":
+            success = soap_note_obj.export_to_docx(
+                temp_path,
+                patient_info=soap_note_obj.patient_info,
+                clinician_info=clinician_data
+            )
+            media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported format: {format}. Use 'pdf' or 'docx'")
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to generate SOAP report")
+        
+        # Generate filename
+        patient_name = "Patient"
+        if soap_note_obj.patient_info:
+            if soap_note_obj.patient_info.get("name") and soap_note_obj.patient_info.get("name") != "Not documented":
+                patient_name = soap_note_obj.patient_info.get("name").replace(" ", "_")
+            elif soap_note_obj.patient_info.get("patient_id") and soap_note_obj.patient_info.get("patient_id") != "Not documented":
+                patient_name = f"Patient_{soap_note_obj.patient_info.get('patient_id')}"
+        
+        filename = f"SOAP_Note_{patient_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{file_ext}"
+        
+        # Return file
+        def cleanup():
+            """Clean up temp file after response"""
+            try:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete temp file {temp_path}: {e}")
+        
+        return FileResponse(
+            temp_path,
+            media_type=media_type,
+            filename=filename,
+            background=cleanup
+        )
+        
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error generating SOAP report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error generating SOAP report: {str(e)}")
 

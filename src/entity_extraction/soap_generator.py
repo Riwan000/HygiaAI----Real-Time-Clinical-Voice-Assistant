@@ -54,6 +54,7 @@ class SOAPNote:
     assessment: str
     plan: str
     metadata: Dict[str, Any]
+    patient_info: Optional[Dict[str, Any]] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert SOAP note to dictionary"""
@@ -62,7 +63,8 @@ class SOAPNote:
             "objective": self.objective,
             "assessment": self.assessment,
             "plan": self.plan,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "patient_info": self.patient_info or {}
         }
     
     def get_field_embeddings_dict(self) -> Dict[str, str]:
@@ -652,7 +654,8 @@ class SOAPGenerator:
             objective=soap_note["objective"],
             assessment=soap_note["assessment"],
             plan=soap_note["plan"],
-            metadata=metadata
+            metadata=metadata,
+            patient_info=soap_note.get("patient_info")
         )
     
     def _retrieve_knowledge_base_context(
@@ -661,7 +664,7 @@ class SOAPGenerator:
         entities: List[MedicalEntity],
         patient_metadata: Optional[Dict[str, Any]]
     ) -> str:
-        """Retrieve relevant knowledge base context for SOAP generation"""
+        """Retrieve relevant knowledge base context and patient history for SOAP generation"""
         # Always try to retrieve knowledge base context for better SOAP structure
         try:
             import os
@@ -733,10 +736,135 @@ class SOAPGenerator:
                 if content:
                     context_parts.append(f"Disease Information ({title}):\n{content[:500]}")
             
+            # Retrieve patient history from patient_memory_collection if patient_id is available
+            patient_history_context = self._retrieve_patient_history(
+                transcript, entities, patient_metadata, embedder
+            )
+            if patient_history_context:
+                context_parts.append(f"PATIENT HISTORY SUMMARY:\n{patient_history_context}")
+            
             return "\n\n".join(context_parts)
             
         except Exception as e:
             logger.warning(f"Error retrieving knowledge base context: {e}")
+            return ""
+    
+    def _retrieve_patient_history(
+        self,
+        transcript: str,
+        entities: List[MedicalEntity],
+        patient_metadata: Optional[Dict[str, Any]],
+        embedder
+    ) -> str:
+        """Retrieve and summarize patient history from patient_memory_collection"""
+        try:
+            import os
+            from src.storage.qdrant_storage import QdrantStorage
+            
+            # Extract patient_id from metadata or transcript
+            patient_id = None
+            if patient_metadata:
+                patient_id = patient_metadata.get("patient_id")
+            
+            # If no patient_id, try to extract from transcript
+            if not patient_id:
+                # Look for patient ID patterns in transcript
+                import re
+                id_patterns = [
+                    r"patient\s+id[:\s]+([A-Z0-9\-]+)",
+                    r"mrn[:\s]+([A-Z0-9\-]+)",
+                    r"medical\s+record[:\s]+([A-Z0-9\-]+)",
+                ]
+                for pattern in id_patterns:
+                    match = re.search(pattern, transcript, re.IGNORECASE)
+                    if match:
+                        patient_id = match.group(1)
+                        break
+            
+            if not patient_id:
+                return ""  # No patient ID to search with
+            
+            # Connect to patient_memory_collection
+            qdrant_url = os.getenv("QDRANT_URL")
+            if qdrant_url:
+                patient_storage = QdrantStorage(
+                    url=qdrant_url,
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="patient_memory_collection",
+                    vector_size=768
+                )
+            else:
+                patient_storage = QdrantStorage(
+                    host=os.getenv("QDRANT_HOST", "localhost"),
+                    port=int(os.getenv("QDRANT_PORT", "6334")),
+                    api_key=os.getenv("QDRANT_API_KEY"),
+                    collection_name="patient_memory_collection",
+                    vector_size=768
+                )
+            
+            # Search for patient records
+            # Build query from current symptoms/diagnoses
+            symptoms = [e.text for e in entities if e.entity_type == EntityType.SYMPTOM]
+            diagnoses = [e.text for e in entities if e.entity_type == EntityType.DIAGNOSIS]
+            
+            query_text = f"{' '.join(symptoms[:3])} {' '.join(diagnoses[:2])}".strip()
+            if not query_text:
+                query_text = transcript[:200]  # Use transcript snippet if no entities
+            
+            query_embedding = embedder.generate_embedding(query_text)
+            
+            # Search with patient_id filter if possible
+            filters = {}
+            try:
+                # Try to filter by patient_id (may be hashed in de-identified data)
+                filters["patient_id"] = patient_id
+            except:
+                pass  # If filtering fails, do semantic search
+            
+            patient_results = patient_storage.search_with_filters(
+                query_embedding=query_embedding,
+                filters=filters if filters else None,
+                limit=5,
+                score_threshold=0.4
+            )
+            
+            if not patient_results:
+                return ""
+            
+            # Summarize patient history
+            history_parts = []
+            for i, result in enumerate(patient_results[:3], 1):  # Limit to top 3
+                payload = result.get("payload", {})
+                content = payload.get("content", "") or payload.get("text", "") or payload.get("transcript", "")
+                
+                if content:
+                    # Extract key information
+                    metadata_info = []
+                    if payload.get("diagnosis"):
+                        metadata_info.append(f"Diagnosis: {payload.get('diagnosis')}")
+                    if payload.get("age_group"):
+                        metadata_info.append(f"Age Group: {payload.get('age_group')}")
+                    if payload.get("comorbidities"):
+                        comorbidities = payload.get("comorbidities")
+                        if isinstance(comorbidities, list):
+                            metadata_info.append(f"Comorbidities: {', '.join(comorbidities)}")
+                        else:
+                            metadata_info.append(f"Comorbidities: {comorbidities}")
+                    
+                    history_summary = f"Previous Visit {i}"
+                    if metadata_info:
+                        history_summary += f" ({'; '.join(metadata_info)})"
+                    history_summary += f": {content[:300]}..."
+                    
+                    history_parts.append(history_summary)
+            
+            if history_parts:
+                return "\n".join(history_parts)
+            
+            return ""
+            
+        except Exception as e:
+            logger.warning(f"Error retrieving patient history: {e}")
             return ""
     
     def _generate_soap_with_llm(
@@ -786,7 +914,7 @@ class SOAPGenerator:
             # Build main prompt with explicit extraction instructions
             prompt = f"""You are a medical professional generating a structured SOAP note from a clinical consultation transcript.
 
-PATIENT INFORMATION:
+PATIENT INFORMATION (if provided):
 {metadata_text if metadata_text else "Not provided"}
 
 EXTRACTED MEDICAL ENTITIES:
@@ -803,8 +931,17 @@ CRITICAL INSTRUCTIONS:
 3. Each section should be concise and contain only extracted, relevant information
 4. Use the knowledge base context to ensure clinical accuracy and proper structure
 5. Format each section with clear subsections using line breaks
+6. EXTRACT patient demographics (name, age, gender, DOB, patient ID) from the transcript if mentioned
 
 REQUIRED OUTPUT FORMAT:
+
+PATIENT DEMOGRAPHICS - Extract from transcript if mentioned:
+- Patient Name: [Full name if mentioned, otherwise "Not documented"]
+- Patient ID/Medical Record Number: [ID if mentioned, otherwise "Not documented"]
+- Date of Birth (DOB): [DOB if mentioned, otherwise "Not documented"]
+- Age: [Age if mentioned, otherwise "Not documented"]
+- Gender: [Gender if mentioned, otherwise "Not documented"]
+- Contact Information: [Phone/Email if mentioned, otherwise "Not documented"]
 
 SUBJECTIVE (S) - Extract ONLY patient-reported information:
 - Chief Complaint: [Brief statement of main concern - 1-2 sentences]
@@ -840,9 +977,18 @@ CRITICAL RULES:
 - Use bullet points for lists
 - Use professional medical language
 - If information is not present, write "Not documented" or "Not mentioned"
+- Extract patient demographics from the transcript text itself (look for phrases like "My name is...", "I'm [age] years old", "Patient ID is...", etc.)
 
 Generate ONLY a JSON object with this exact structure:
 {{
+    "patient_info": {{
+        "name": "[Patient name if mentioned, otherwise 'Not documented']",
+        "patient_id": "[Patient ID/MRN if mentioned, otherwise 'Not documented']",
+        "dob": "[Date of birth if mentioned, otherwise 'Not documented']",
+        "age": "[Age if mentioned, otherwise 'Not documented']",
+        "gender": "[Gender if mentioned, otherwise 'Not documented']",
+        "contact": "[Phone/Email if mentioned, otherwise 'Not documented']"
+    }},
     "subjective": "Chief Complaint: ...\\nHistory of Present Illness: ...\\nMedical History: ...\\nCurrent Medications: ...",
     "objective": "Vital Signs: ...\\nPhysical Examination: ...\\nAppearance and Behavior: ...\\nLab/Test Results: ...",
     "assessment": "Primary Diagnosis: ...\\nClinical Impression: ...\\nDifferential Diagnosis: ...\\nClinical Reasoning: ...",
@@ -895,6 +1041,11 @@ Use the SOAP note writing guidelines above to structure your output properly.
             # Parse JSON
             soap_data = json.loads(response_text)
             
+            # Extract patient info
+            patient_info = soap_data.get("patient_info", {})
+            if not patient_info:
+                patient_info = {}
+            
             # Validate that sections don't contain the full transcript
             transcript_length = len(transcript)
             subjective = soap_data.get("subjective", "").strip()
@@ -923,12 +1074,13 @@ Use the SOAP note writing guidelines above to structure your output properly.
                 logger.warning("SOAP sections are identical, likely contains full transcript. Using rule-based fallback.")
                 return self._generate_soap_rule_based(transcript, entities)
             
-            # Validate and return
+            # Validate and return with patient info
             return {
                 "subjective": subjective if subjective else "No subjective information recorded.",
                 "objective": objective if objective else "No objective findings recorded.",
                 "assessment": assessment if assessment else "Assessment pending further evaluation.",
-                "plan": plan if plan else "Plan pending assessment completion."
+                "plan": plan if plan else "Plan pending assessment completion.",
+                "patient_info": patient_info
             }
             
         except json.JSONDecodeError as e:
@@ -961,7 +1113,8 @@ Use the SOAP note writing guidelines above to structure your output properly.
             "subjective": subjective,
             "objective": objective,
             "assessment": assessment,
-            "plan": plan
+            "plan": plan,
+            "patient_info": {}  # Rule-based extraction doesn't extract patient demographics
         }
     
     def _extract_subjective(self, transcript: str, entities: List[MedicalEntity]) -> str:

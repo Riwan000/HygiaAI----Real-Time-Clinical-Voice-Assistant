@@ -343,6 +343,66 @@ async def ingest_multimodal(
         # Ingest case
         result = ingestion.ingest_case(case, generate_soap=True)
         
+        # Also store in patient_memory_collection for patient history retrieval
+        if result["status"] == "success":
+            try:
+                from src.storage.qdrant_storage import QdrantStorage
+                from src.embeddings import BioBERTEmbeddingGenerator
+                from src.storage.schema import StorageMetadata, ModalityType
+                
+                # Get patient memory storage
+                patient_memory_storage = get_qdrant_storage(collection_name="patient_memory_collection")
+                embedder = BioBERTEmbeddingGenerator()
+                
+                # Extract text content for patient record
+                text_content = ""
+                if transcript_text:
+                    text_content = transcript_text
+                elif text_file:
+                    # Re-read text file content
+                    await text_file.seek(0)  # Reset file pointer
+                    text_content = (await text_file.read()).decode("utf-8")
+                elif "text" in modalities:
+                    text_content = modalities["text"].content.get("transcript", "")
+                
+                if text_content:
+                    # Generate embedding
+                    embedding = embedder.generate_embedding(text_content[:2000])  # Limit length
+                    
+                    # Create transcript data
+                    transcript_data = {
+                        "transcript": text_content[:5000],  # Store full transcript
+                        "session_id": case.case_id,
+                        "metadata": {
+                            "patient_id": patient_id,
+                            "age_group": age_group,
+                            "region": region,
+                            "comorbidities": comorbidities_list,
+                            "diagnosis": diagnosis,
+                            "outcome": outcome,
+                        },
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "confidence": 1.0,
+                        "processed_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    
+                    # Create metadata
+                    metadata = StorageMetadata(
+                        session_id=case.case_id,
+                        patient_id=patient_id,
+                        timestamp=datetime.now(timezone.utc),
+                        modality=ModalityType.TEXT,
+                        confidence=1.0
+                    )
+                    
+                    # Store in patient_memory_collection
+                    patient_memory_storage.store_transcript(transcript_data, embedding, metadata)
+                    logger.info(f"✓ Stored patient record in patient_memory_collection for patient {patient_id}")
+                    
+            except Exception as patient_storage_error:
+                # Don't fail the entire request if patient memory storage fails
+                logger.warning(f"Failed to store patient record in patient_memory_collection: {patient_storage_error}")
+        
         # Generate RAG-based suggestions if ingestion was successful
         rag_suggestions = None
         if result["status"] == "success":
@@ -392,6 +452,86 @@ async def ingest_multimodal(
                     # Convert insight to dictionary for response
                     rag_suggestions = insight.to_dict()
                     logger.info(f"✓ RAG suggestions generated successfully")
+                    
+                    # Store summary in knowledge base if available
+                    if insight.summary:
+                        try:
+                            from src.storage.knowledge_ingestion import KnowledgeIngestionPipeline
+                            from src.storage.schema import KnowledgeBaseMetadata, EmbeddingType, AccessType
+                            from src.embeddings import BioBERTEmbeddingGenerator
+                            
+                            # Get knowledge base storage
+                            kb_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
+                            embedder = BioBERTEmbeddingGenerator()
+                            
+                            # Create summary document
+                            summary_title = f"Patient Summary - {patient_id} - {case.case_id}"
+                            summary_content = f"""Patient Summary for Case {case.case_id}
+
+Patient ID: {patient_id}
+Age Group: {age_group or 'Not specified'}
+Region: {region or 'Not specified'}
+Comorbidities: {', '.join(comorbidities_list) if comorbidities_list else 'None'}
+Diagnosis: {diagnosis or 'Not specified'}
+Outcome: {outcome or 'Not specified'}
+
+CLINICAL SUMMARY:
+{insight.summary}
+
+DIFFERENTIAL DIAGNOSES:
+{chr(10).join([f"- {dd.get('diagnosis', '')} (Confidence: {dd.get('confidence', 'N/A')})" for dd in insight.differential_diagnoses]) if insight.differential_diagnoses else 'None provided'}
+
+RECOMMENDATIONS:
+{chr(10).join([f"- {rec.title}: {rec.description} (Confidence: {rec.confidence:.2f})" for rec in insight.recommendations]) if insight.recommendations else 'None provided'}
+
+Generated: {datetime.now(timezone.utc).isoformat()}
+"""
+                            
+                            # Create document data
+                            document_data = {
+                                "title": summary_title,
+                                "content": summary_content,
+                                "source": "HygiaAI Patient Summary",
+                                "author": "HygiaAI Clinical RAG",
+                                "year": datetime.now(timezone.utc).year,
+                                "provenance_url": f"https://hygiaai.local/patient-summary/{case.case_id}",
+                                "patient_id": patient_id,
+                                "case_id": case.case_id
+                            }
+                            
+                            # Create metadata
+                            kb_metadata = KnowledgeBaseMetadata(
+                                title=summary_title,
+                                source="HygiaAI Patient Summary",
+                                domain="guidelines",  # Use guidelines domain for patient summaries
+                                year=datetime.now(timezone.utc).year,
+                                embedding_type=EmbeddingType.TEXT,
+                                access_type=AccessType.RESTRICTED,  # Patient summaries are restricted
+                                provenance_url=f"https://hygiaai.local/patient-summary/{case.case_id}",
+                                author="HygiaAI Clinical RAG"
+                            )
+                            
+                            # Initialize ingestion pipeline
+                            ingestion_pipeline = KnowledgeIngestionPipeline(
+                                qdrant_storage=kb_storage,
+                                text_embedding_generator=lambda text: embedder.generate_embedding(text),
+                                chunk_size=512,
+                                chunk_overlap=50,
+                                enforce_open_access=False  # Allow patient summaries
+                            )
+                            
+                            # Ingest summary into knowledge base
+                            point_ids = ingestion_pipeline.ingest_document(
+                                document_data,
+                                metadata=kb_metadata
+                            )
+                            
+                            logger.info(f"✓ Stored patient summary in knowledge base: {len(point_ids)} chunks")
+                            
+                        except Exception as kb_storage_error:
+                            # Don't fail the request if knowledge base storage fails
+                            logger.warning(f"Failed to store patient summary in knowledge base: {kb_storage_error}")
+                            logger.debug(f"KB storage error details: {kb_storage_error}", exc_info=True)
                     
             except Exception as rag_error:
                 # Don't fail the entire request if RAG generation fails
