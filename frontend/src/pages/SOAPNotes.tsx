@@ -38,12 +38,11 @@ export function SOAPNotes() {
 
     try {
       // Fetch SOAP notes from API
-      // The API will return SOAP notes from stored cases
-      // Note: API limit is maximum 20
-      // Using a generic query that matches all clinical cases
+      // Use empty query_text to get all cases efficiently (uses scroll API)
+      // This is faster than semantic search for listing all cases
       const response = await ClinicalMemoryService.recallSimilarCases({
-        query_text: 'clinical case patient consultation', // Generic query to match all cases
-        limit: 20, // Maximum allowed by API
+        query_text: '', // Empty query uses scroll API for faster retrieval
+        limit: 200, // Increased limit to get more SOAP notes
         score_threshold: 0.0, // Low threshold to get all cases
       });
 
