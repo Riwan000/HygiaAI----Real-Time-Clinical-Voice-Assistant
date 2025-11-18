@@ -1,9 +1,11 @@
 services:
   - type: web
     name: hygiaai-backend
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python start_server.py
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: 8000
@@ -14,5 +16,9 @@ services:
       - key: QDRANT_PORT
         value: 6333
       - key: QDRANT_API_KEY
+        sync: false
+      - key: GOOGLE_GENERATIVE_AI_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
         sync: false
 
