@@ -145,7 +145,7 @@ export function MultimodalInput() {
         comorbidities: comorbidities.length > 0 ? comorbidities : undefined,
         diagnosis: diagnosis || undefined,
         outcome: outcome || undefined,
-        transcript_text: diseaseDescription || undefined, // Use disease description as transcript
+        disease_description: diseaseDescription || undefined, // Use disease description field
       };
 
       // Call API
@@ -190,7 +190,7 @@ export function MultimodalInput() {
         comorbidities: comorbidities.length > 0 ? comorbidities : undefined,
         diagnosis: diagnosis || undefined,
         outcome: outcome || undefined,
-        transcript_text: diseaseDescription || undefined, // Include disease description
+        disease_description: diseaseDescription || undefined, // Include disease description
         [fileField]: uploadedFile.file,
       };
 
