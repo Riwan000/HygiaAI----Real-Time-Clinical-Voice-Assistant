@@ -119,7 +119,10 @@ def get_clinical_rag() -> ClinicalRAG:
     """Get or create clinical RAG"""
     global _clinical_rag
     if _clinical_rag is None:
-        retriever = get_case_retriever()
+        # Use patient_memory_collection for case retrieval (includes all patient data)
+        # Clinical RAG will use clinical_kb_collection for knowledge via its internal methods
+        storage = get_qdrant_storage(collection_name="patient_memory_collection")
+        retriever = CaseRetriever(qdrant_storage=storage)
         _clinical_rag = ClinicalRAG(case_retriever=retriever)
     return _clinical_rag
 
@@ -128,8 +131,10 @@ def get_temporal_clustering() -> TemporalClusteringService:
     """Get or create TemporalClusteringService instance"""
     global _temporal_clustering
     if _temporal_clustering is None:
+        # Use patient_memory_collection for analytics (includes all patient data)
         _temporal_clustering = TemporalClusteringService(
-            qdrant_storage=get_qdrant_storage()
+            qdrant_storage=get_qdrant_storage(collection_name="patient_memory_collection"),
+            collection_name="patient_memory_collection"
         )
     return _temporal_clustering
 
@@ -138,8 +143,10 @@ def get_regional_analytics() -> RegionalHealthAnalytics:
     """Get or create RegionalHealthAnalytics instance"""
     global _regional_analytics
     if _regional_analytics is None:
+        # Use patient_memory_collection for analytics (includes all patient data)
         _regional_analytics = RegionalHealthAnalytics(
-            qdrant_storage=get_qdrant_storage()
+            qdrant_storage=get_qdrant_storage(collection_name="patient_memory_collection"),
+            collection_name="patient_memory_collection"
         )
     return _regional_analytics
 
@@ -196,8 +203,9 @@ class RecallRequest(BaseModel):
     """Request model for similar case recall"""
     query_text: Optional[str] = Field(None, description="Text query for similarity search")
     query_image_path: Optional[str] = Field(None, description="Path to image for similarity search")
-    limit: int = Field(5, ge=1, le=20, description="Number of similar cases to return")
+    limit: int = Field(5, ge=1, le=200, description="Number of similar cases to return (higher limit for timeline queries)")
     score_threshold: Optional[float] = Field(None, ge=0.0, le=1.0, description="Minimum similarity score")
+    patient_id: Optional[str] = Field(None, description="Filter by patient ID")
     age_group: Optional[str] = Field(None, description="Filter by age group")
     region: Optional[str] = Field(None, description="Filter by region")
     diagnosis: Optional[str] = Field(None, description="Filter by diagnosis")
@@ -302,8 +310,10 @@ async def ingest_multimodal(
         logger.info(f"Generated case_id: {case_id}")
         
         # Process text/transcript
+        extracted_text = ""
         if transcript_text:
             try:
+                extracted_text = transcript_text
                 modalities["text"] = CaseModality(
                     modality_type="text",
                     content={"transcript": transcript_text}
@@ -314,18 +324,51 @@ async def ingest_multimodal(
                 raise HTTPException(status_code=400, detail=f"Error processing text: {str(text_error)}")
         elif text_file:
             try:
-                text_content = await text_file.read()
-                decoded_text = text_content.decode("utf-8")
-                modalities["text"] = CaseModality(
-                    modality_type="text",
-                    content={"transcript": decoded_text}
-                )
-                logger.info(f"Added text modality from text_file ({len(decoded_text)} chars)")
+                # Check if it's a document file (PDF, DOCX) or plain text
+                file_ext = Path(text_file.filename).suffix.lower() if text_file.filename else ".txt"
+                
+                if file_ext in ['.pdf', '.docx', '.doc']:
+                    # Extract text from document
+                    from src.utils.file_processor import FileProcessor
+                    import tempfile
+                    import io
+                    
+                    # Save file temporarily for processing
+                    temp_dir = Path(tempfile.gettempdir())
+                    doc_path = temp_dir / text_file.filename
+                    
+                    file_content = await text_file.read()
+                    with open(doc_path, "wb") as f:
+                        f.write(file_content)
+                    
+                    # Process document
+                    doc_result = FileProcessor.process_file(str(doc_path))
+                    extracted_text = doc_result.get("content", "") or doc_result.get("text", "")
+                    
+                    logger.info(f"Extracted text from {file_ext} document: {len(extracted_text)} chars")
+                else:
+                    # Plain text file
+                    file_content = await text_file.read()
+                    extracted_text = file_content.decode("utf-8")
+                    logger.info(f"Read text from text_file: {len(extracted_text)} chars")
+                
+                # Add to modalities
+                if "text" in modalities:
+                    # Combine with existing text (e.g., from audio transcription)
+                    existing_text = modalities["text"].content.get("transcript", "")
+                    modalities["text"].content["transcript"] = f"{existing_text}\n\n[Document Content]\n{extracted_text}".strip()
+                else:
+                    modalities["text"] = CaseModality(
+                        modality_type="text",
+                        content={"transcript": extracted_text}
+                    )
+                    
             except Exception as text_file_error:
                 logger.error(f"Error processing text_file: {text_file_error}", exc_info=True)
                 raise HTTPException(status_code=400, detail=f"Error processing text file: {str(text_file_error)}")
         
-        # Process audio
+        # Process audio - transcribe it to text
+        audio_transcript = ""
         if audio_file:
             # Save audio file temporarily (cross-platform)
             import tempfile
@@ -336,10 +379,57 @@ async def ingest_multimodal(
                     content = await audio_file.read()
                     f.write(content)
                 
-                modalities["audio"] = CaseModality(
-                    modality_type="audio",
-                    content={"audio_path": str(audio_path)}
-                )
+                # Transcribe audio using Deepgram
+                try:
+                    from src.api.transcription_ws_api import transcribe_audio_file
+                    logger.info(f"Transcribing audio file: {audio_file.filename}")
+                    
+                    # Create a file-like object for transcription
+                    import io
+                    audio_file_for_transcription = io.BytesIO(content)
+                    audio_file_for_transcription.name = audio_file.filename
+                    
+                    # Transcribe audio
+                    transcription_result = await transcribe_audio_file(
+                        audio_file=audio_file_for_transcription,
+                        language="en-US",
+                        model="nova-2",
+                        smart_format=True,
+                        punctuate=True,
+                        diarize=True,
+                        generate_soap=False  # We'll generate SOAP later
+                    )
+                    
+                    if transcription_result.success and transcription_result.transcript:
+                        audio_transcript = transcription_result.transcript
+                        logger.info(f"✓ Audio transcribed: {len(audio_transcript)} characters")
+                        
+                        # Add transcribed text to text modality or create new one
+                        if "text" in modalities:
+                            # Combine with existing text
+                            existing_text = modalities["text"].content.get("transcript", "")
+                            modalities["text"].content["transcript"] = f"{existing_text}\n\n[Audio Transcription]\n{audio_transcript}".strip()
+                        else:
+                            # Create text modality from transcription
+                            modalities["text"] = CaseModality(
+                                modality_type="text",
+                                content={"transcript": audio_transcript}
+                            )
+                    else:
+                        logger.warning(f"Audio transcription failed: {transcription_result.error}")
+                        # Still store audio modality even if transcription fails
+                        modalities["audio"] = CaseModality(
+                            modality_type="audio",
+                            content={"audio_path": str(audio_path), "transcription_failed": True}
+                        )
+                except Exception as transcribe_error:
+                    logger.warning(f"Error transcribing audio: {transcribe_error}, storing audio without transcription")
+                    # Store audio modality even if transcription fails
+                    modalities["audio"] = CaseModality(
+                        modality_type="audio",
+                        content={"audio_path": str(audio_path), "transcription_error": str(transcribe_error)}
+                    )
+                
             except Exception as audio_error:
                 logger.error(f"Error saving audio file: {audio_error}")
                 raise HTTPException(status_code=500, detail=f"Error processing audio file: {str(audio_error)}")
@@ -363,9 +453,37 @@ async def ingest_multimodal(
                 logger.error(f"Error saving image file: {image_error}")
                 raise HTTPException(status_code=500, detail=f"Error processing image file: {str(image_error)}")
         
+        # If no modalities provided, create a text modality from form inputs
+        # This ensures SOAP notes are generated even with form-only inputs
         if not modalities:
-            logger.error("No modalities provided in request")
-            raise HTTPException(status_code=400, detail="No input data provided. Please provide transcript_text, text_file, audio_file, or image_file.")
+            logger.info("No modalities provided, creating text modality from form inputs")
+            # Build a synthetic transcript from form inputs
+            synthetic_transcript_parts = []
+            
+            if age_group:
+                synthetic_transcript_parts.append(f"Patient age group: {age_group}")
+            if region:
+                synthetic_transcript_parts.append(f"Region: {region}")
+            if comorbidities_list:
+                synthetic_transcript_parts.append(f"Comorbidities: {', '.join(comorbidities_list)}")
+            if diagnosis:
+                synthetic_transcript_parts.append(f"Diagnosis: {diagnosis}")
+            if outcome:
+                synthetic_transcript_parts.append(f"Outcome: {outcome}")
+            
+            # Create a basic clinical note format
+            if synthetic_transcript_parts:
+                synthetic_transcript = "CLINICAL ENTRY:\n" + "\n".join(synthetic_transcript_parts)
+            else:
+                # Minimal transcript if only patient_id is provided
+                synthetic_transcript = f"Patient consultation for patient ID: {patient_id}"
+            
+            modalities["text"] = CaseModality(
+                modality_type="text",
+                content={"transcript": synthetic_transcript}
+            )
+            extracted_text = synthetic_transcript
+            logger.info(f"Created synthetic text modality from form inputs ({len(synthetic_transcript)} chars)")
         
         logger.info(f"Prepared {len(modalities)} modality(ies): {list(modalities.keys())}")
         
@@ -455,33 +573,46 @@ async def ingest_multimodal(
         rag_suggestions = None
         if result["status"] == "success":
             try:
-                # Extract text from case for RAG query
+                # Extract and combine all text sources for RAG query
                 query_text = ""
+                
+                # Get text from various sources
                 if transcript_text:
                     query_text = transcript_text
-                elif text_file:
-                    # Re-read text file content
-                    try:
-                        await text_file.seek(0)  # Reset file pointer
-                        text_content = await text_file.read()
-                        query_text = text_content.decode("utf-8")
-                    except Exception as seek_error:
-                        logger.warning(f"Could not re-read text_file: {seek_error}, using existing content")
-                        if "text" in modalities:
-                            query_text = modalities["text"].content.get("transcript", "")
                 elif "text" in modalities:
                     query_text = modalities["text"].content.get("transcript", "")
                 
-                # Also include metadata in query for better context
+                # Also include audio transcript if available
+                if audio_transcript and audio_transcript not in query_text:
+                    query_text = f"{query_text}\n\n[Audio Transcription]\n{audio_transcript}".strip() if query_text else audio_transcript
+                
+                # Also include extracted document text if available
+                if extracted_text and extracted_text not in query_text:
+                    query_text = f"{query_text}\n\n[Document Content]\n{extracted_text}".strip() if query_text else extracted_text
+                
+                # Build comprehensive enriched query with all form inputs and parsed content
                 if query_text and len(query_text.strip()) > 10:  # Only generate if we have meaningful text
-                    # Build enriched query text
-                    enriched_query = query_text
-                    if diagnosis:
-                        enriched_query += f"\n\nDiagnosis: {diagnosis}"
-                    if comorbidities_list:
-                        enriched_query += f"\n\nComorbidities: {', '.join(comorbidities_list)}"
+                    # Build enriched query text combining all inputs
+                    enriched_query_parts = []
+                    
+                    # Add main content (transcript/audio/document)
+                    enriched_query_parts.append("PATIENT PRESENTATION:")
+                    enriched_query_parts.append(query_text)
+                    
+                    # Add form inputs as structured context
+                    enriched_query_parts.append("\nPATIENT INFORMATION:")
                     if age_group:
-                        enriched_query += f"\n\nAge Group: {age_group}"
+                        enriched_query_parts.append(f"Age Group: {age_group}")
+                    if region:
+                        enriched_query_parts.append(f"Region: {region}")
+                    if comorbidities_list:
+                        enriched_query_parts.append(f"Comorbidities: {', '.join(comorbidities_list)}")
+                    if diagnosis:
+                        enriched_query_parts.append(f"Current/Provisional Diagnosis: {diagnosis}")
+                    if outcome:
+                        enriched_query_parts.append(f"Outcome: {outcome}")
+                    
+                    enriched_query = "\n".join(enriched_query_parts)
                     
                     # Generate RAG insights with timeout protection
                     logger.info(f"Generating RAG-based suggestions for case {case.case_id}...")
@@ -833,12 +964,17 @@ async def recall_similar_cases(request: RecallRequest):
         retriever = get_case_retriever()
         
         # Determine query type and generate embedding
-        if request.query_text:
+        # Allow empty query_text to list all cases (for dashboard/case viewer)
+        if request.query_text is not None:  # Allow empty string
             query_type = "text"
         elif request.query_image_path:
             query_type = "image"
+        elif request.patient_id:
+            query_type = "text"  # Use text type even with empty query when patient_id is provided
         else:
-            raise HTTPException(status_code=400, detail="Either query_text or query_image_path must be provided")
+            # Default to text type with empty query to list all cases
+            query_type = "text"
+            request.query_text = ""
         
         # Build retrieval options
         from ..retrieval.case_retrieval import RetrievalOptions
@@ -846,6 +982,7 @@ async def recall_similar_cases(request: RecallRequest):
         options = RetrievalOptions(
             limit=request.limit,
             score_threshold=request.score_threshold,
+            patient_id=request.patient_id,
             age_group=request.age_group,
             region=request.region,
             diagnosis=request.diagnosis
@@ -856,10 +993,15 @@ async def recall_similar_cases(request: RecallRequest):
             start_time_range = end_time - timedelta(days=request.time_range_days)
             options.time_range = {"gte": start_time_range, "lte": end_time}
         
+        # If patient_id is provided, use keyword mode (filter-based) instead of semantic search
+        # This is more efficient and accurate for patient ID lookups
+        if request.patient_id and not request.query_text:
+            options.mode = RetrievalMode.KEYWORD
+        
         # Retrieve similar cases
         if query_type == "text":
             results = retriever.retrieve_similar_cases(
-                query_text=request.query_text,
+                query_text=request.query_text if request.query_text else None,
                 options=options
             )
         else:  # image
@@ -870,13 +1012,29 @@ async def recall_similar_cases(request: RecallRequest):
         # Format results
         similar_cases = []
         for result in results[:request.limit]:
+            # Extract patient_id from case_data payload
+            patient_id = result.case_data.get("patient_id") if result.case_data else None
+            
+            # Extract SOAP note from case_data or modalities
+            soap_note = None
+            if result.case_data:
+                soap_note = result.case_data.get("soap_note") or result.case_data.get("soap_notes")
+            if not soap_note and result.modalities and result.modalities.get("text"):
+                soap_note = result.modalities["text"].get("soap")
+            
+            # Build case_data dict with SOAP note included
+            case_data_dict = result.case_data.copy() if result.case_data else {}
+            if soap_note and "soap_note" not in case_data_dict:
+                case_data_dict["soap_note"] = soap_note
+            
             similar_cases.append({
                 "case_id": result.case_id,
+                "patient_id": patient_id,  # Include patient_id at top level for easy access
                 "similarity_score": result.score,
                 "semantic_score": result.semantic_score,
                 "keyword_score": result.keyword_score,
                 "metadata": result.metadata.dict() if result.metadata and hasattr(result.metadata, 'dict') else (result.metadata.model_dump() if result.metadata and hasattr(result.metadata, 'model_dump') else None),
-                "case_data": result.case_data,
+                "case_data": case_data_dict,  # Include full case data with SOAP note
                 "modalities": result.modalities
             })
         

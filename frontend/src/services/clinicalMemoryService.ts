@@ -97,6 +97,7 @@ export type RecallRequest = {
   query_image_path?: string;
   limit?: number;
   score_threshold?: number;
+  patient_id?: string;
   age_group?: string;
   region?: string;
   diagnosis?: string;
@@ -338,6 +339,7 @@ export class ClinicalMemoryService {
       method: 'POST',
       url: API_ENDPOINTS.CLINICAL_MEMORY.TEMPORAL_CLUSTERING,
       data: request,
+      timeout: 120000, // 2 minutes timeout for analytics queries
       retry: {
         attempts: 1,
         delay: 2000,
@@ -355,6 +357,7 @@ export class ClinicalMemoryService {
       method: 'POST',
       url: API_ENDPOINTS.CLINICAL_MEMORY.REGIONAL_ANALYTICS,
       data: request,
+      timeout: 120000, // 2 minutes timeout for analytics queries
       retry: {
         attempts: 1,
         delay: 2000,

@@ -61,18 +61,12 @@ export function Dashboard() {
   ]);
 
   const fetchCases = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      setCases([]);
-      setTotalItems(0);
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     try {
       const request: RecallRequest = {
-        query_text: searchQuery,
+        query_text: searchQuery.trim() || '', // Allow empty query to get all cases
         limit: PAGE_SIZE * currentPage,
         score_threshold: filters.score_threshold,
         age_group: filters.age_group,
@@ -170,10 +164,9 @@ export function Dashboard() {
     }
   }, []);
 
+  // Auto-load cases on mount and when dependencies change
   useEffect(() => {
-    if (searchQuery.trim()) {
-      fetchCases();
-    }
+    fetchCases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, filters, sortBy, currentPage]);
 

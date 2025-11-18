@@ -1,0 +1,44 @@
+# Optimized requirements for Railway deployment
+# Using CPU-only PyTorch to reduce image size
+
+# Web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# Vector database
+qdrant-client>=1.7.0
+
+# ML/AI libraries - CPU-only versions
+# Using torch CPU-only (much smaller than full torch)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.1.0,<2.2.0
+transformers>=4.35.0,<5.0.0
+sentence-transformers>=2.2.0,<3.0.0
+
+# Document generation
+reportlab>=4.0.0
+python-docx>=1.1.0
+PyPDF2>=3.0.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Deepgram SDK
+deepgram-sdk>=5.3.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# LLM - Google Gemini
+google-generativeai>=0.3.0
+
+# WebSocket support
+python-socketio
+websockets
+requests
+
+# Testing dependencies (minimal)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0
+

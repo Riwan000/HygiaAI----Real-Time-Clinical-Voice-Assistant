@@ -12,9 +12,11 @@ pydantic>=2.0.0
 qdrant-client>=1.7.0
 
 # ML/AI libraries
+# Note: PyTorch CPU-only version is installed in Dockerfile to reduce image size
+# For local development, install full torch: pip install torch
 transformers>=4.35.0
-torch>=2.1.0
 sentence-transformers>=2.2.0
+# torch>=2.1.0  # Installed separately in Dockerfile as CPU-only version
 
 # Document generation
 reportlab>=4.0.0

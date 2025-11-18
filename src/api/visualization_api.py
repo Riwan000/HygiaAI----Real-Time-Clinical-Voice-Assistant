@@ -22,31 +22,24 @@ from src.visualization import (
 )
 from src.storage import QdrantStorage
 from src.retrieval import CaseRetriever
+from src.api.clinical_memory_api import get_qdrant_storage
 
 router = APIRouter(prefix="/api/visualization", tags=["visualization"])
 
 
-# Dependency injection
-def get_qdrant_storage() -> QdrantStorage:
-    """Get Qdrant storage instance"""
-    return QdrantStorage(
-        host="localhost",
-        port=6333,
-        enable_encryption=False,
-        enable_deidentification=False
-    )
+# Dependency injection - use centralized get_qdrant_storage from clinical_memory_api
+# This ensures consistent collection usage across all features
 
-
-def get_case_retriever() -> CaseRetriever:
-    """Get case retriever instance"""
-    storage = get_qdrant_storage()
+def get_case_retriever_for_visualization() -> CaseRetriever:
+    """Get case retriever instance for visualization (uses patient_memory_collection)"""
+    storage = get_qdrant_storage(collection_name="patient_memory_collection")
     return CaseRetriever(qdrant_storage=storage)
 
 
 def get_trend_analyzer() -> TemporalTrendAnalyzer:
-    """Get trend analyzer instance"""
-    storage = get_qdrant_storage()
-    retriever = get_case_retriever()
+    """Get trend analyzer instance (uses patient_memory_collection for analytics)"""
+    storage = get_qdrant_storage(collection_name="patient_memory_collection")
+    retriever = CaseRetriever(qdrant_storage=storage)
     return TemporalTrendAnalyzer(
         qdrant_storage=storage,
         case_retriever=retriever
@@ -54,9 +47,9 @@ def get_trend_analyzer() -> TemporalTrendAnalyzer:
 
 
 def get_case_map_generator() -> CaseMapGenerator:
-    """Get case map generator instance"""
-    storage = get_qdrant_storage()
-    retriever = get_case_retriever()
+    """Get case map generator instance (uses patient_memory_collection for analytics)"""
+    storage = get_qdrant_storage(collection_name="patient_memory_collection")
+    retriever = CaseRetriever(qdrant_storage=storage)
     return CaseMapGenerator(
         qdrant_storage=storage,
         case_retriever=retriever
@@ -215,13 +208,15 @@ async def detect_outbreak_signals(
 
 @router.post("/outbreak/detect-advanced")
 async def detect_outbreak_advanced(
-    request: AdvancedOutbreakDetectionRequest,
-    storage: QdrantStorage = Depends(get_qdrant_storage),
-    retriever: CaseRetriever = Depends(get_case_retriever)
+    request: AdvancedOutbreakDetectionRequest
 ):
     """Advanced outbreak detection using clustering algorithms"""
     try:
         from src.outbreak import OutbreakDetector, DetectionMethod, OutbreakDetectionOptions
+        
+        # Use patient_memory_collection for outbreak detection (includes all patient data)
+        storage = get_qdrant_storage(collection_name="patient_memory_collection")
+        retriever = CaseRetriever(qdrant_storage=storage)
         
         detector = OutbreakDetector(
             qdrant_storage=storage,

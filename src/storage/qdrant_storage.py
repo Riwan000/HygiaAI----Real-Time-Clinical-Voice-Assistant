@@ -647,31 +647,34 @@ class QdrantStorage:
         try:
             # Build filter conditions
             qdrant_filter = None
+            # Extract timestamp and patient_id filters separately - filter in Python
+            # Timestamps are ISO strings and patient_id may not have an index
+            timestamp_filter = None
+            patient_id_filter = None
+            filters_copy = filters.copy() if filters else {}
+            if "timestamp" in filters_copy:
+                timestamp_filter = filters_copy.pop("timestamp")
+            if "patient_id" in filters_copy:
+                patient_id_filter = filters_copy.pop("patient_id")
+            filters = filters_copy
+            
             if filters:
                 conditions = []
                 for key, value in filters.items():
-                    # Handle range filters (e.g., age, year, timestamp)
+                    # Handle range filters (e.g., age, year) - NOT timestamp (handled separately)
                     if isinstance(value, dict):
                         if "gte" in value or "lte" in value or "gt" in value or "lt" in value:
-                            # Range filter - convert ISO datetime strings to Unix timestamps
+                            # Range filter for numeric fields
                             range_filter = {}
                             for op in ["gte", "lte", "gt", "lt"]:
                                 if op in value:
                                     val = value[op]
-                                    # Convert ISO datetime string to Unix timestamp if needed
+                                    # Convert to number if needed
                                     if isinstance(val, str):
                                         try:
-                                            # Try parsing as ISO datetime
-                                            dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
-                                            val = dt.timestamp()
-                                        except (ValueError, AttributeError):
-                                            # If not a datetime, try as number
-                                            try:
-                                                val = float(val)
-                                            except (ValueError, TypeError):
-                                                pass  # Keep original value
-                                    elif isinstance(val, datetime):
-                                        val = val.timestamp()
+                                            val = float(val)
+                                        except (ValueError, TypeError):
+                                            pass  # Keep original value
                                     range_filter[op] = val
                             conditions.append(
                                 FieldCondition(key=key, range=Range(**range_filter))
@@ -691,10 +694,12 @@ class QdrantStorage:
                     qdrant_filter = Filter(must=conditions)
             
             # Search with optional vector name for multi-vector
+            # Get more results if we need to filter by timestamp or patient_id in Python
+            needs_python_filtering = timestamp_filter or patient_id_filter
             search_params = {
                 "collection_name": self.collection_name,
                 "query_vector": (vector_name, query_embedding) if vector_name else query_embedding,
-                "limit": limit,
+                "limit": limit * 2 if needs_python_filtering else limit,
                 "score_threshold": score_threshold,
                 "query_filter": qdrant_filter
             }
@@ -710,6 +715,104 @@ class QdrantStorage:
                     "payload": result.payload,
                     "vector": result.vector if hasattr(result, 'vector') else None
                 })
+            
+            # Apply timestamp filtering in Python (since timestamps are stored as ISO strings)
+            if timestamp_filter and isinstance(timestamp_filter, dict):
+                gte_time = timestamp_filter.get("gte")
+                lte_time = timestamp_filter.get("lte")
+                gt_time = timestamp_filter.get("gt")
+                lt_time = timestamp_filter.get("lt")
+                
+                # Convert ISO strings or datetime objects to datetime for comparison
+                def parse_time(val):
+                    if isinstance(val, str):
+                        try:
+                            return datetime.fromisoformat(val.replace('Z', '+00:00'))
+                        except (ValueError, AttributeError):
+                            return None
+                    elif isinstance(val, datetime):
+                        return val
+                    elif isinstance(val, (int, float)):
+                        return datetime.fromtimestamp(val, tz=timezone.utc)
+                    return None
+                
+                gte_dt = parse_time(gte_time)
+                lte_dt = parse_time(lte_time)
+                gt_dt = parse_time(gt_time)
+                lt_dt = parse_time(lt_time)
+                
+                if gte_dt or lte_dt or gt_dt or lt_dt:
+                    filtered_documents = []
+                    for doc in matching_documents:
+                        payload = doc.get("payload", {})
+                        timestamp_str = payload.get("timestamp")
+                        if timestamp_str:
+                            try:
+                                # Parse timestamp from payload
+                                if isinstance(timestamp_str, str):
+                                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                                elif isinstance(timestamp_str, (int, float)):
+                                    timestamp = datetime.fromtimestamp(timestamp_str, tz=timezone.utc)
+                                else:
+                                    continue
+                                
+                                # Check if timestamp matches filter criteria
+                                matches = True
+                                if gte_dt and timestamp < gte_dt:
+                                    matches = False
+                                if lte_dt and timestamp > lte_dt:
+                                    matches = False
+                                if gt_dt and timestamp <= gt_dt:
+                                    matches = False
+                                if lt_dt and timestamp >= lt_dt:
+                                    matches = False
+                                
+                                if matches:
+                                    filtered_documents.append(doc)
+                            except Exception as e:
+                                logger.debug(f"Error parsing timestamp {timestamp_str}: {e}")
+                                continue
+                        else:
+                            # If no timestamp, exclude from results when timestamp filter is active
+                            pass
+                    
+                    matching_documents = filtered_documents
+            
+            # Apply patient_id filtering in Python (since it may not have an index)
+            if patient_id_filter:
+                filtered_documents = []
+                for doc in matching_documents:
+                    payload = doc.get("payload", {})
+                    # Check patient_id in multiple possible locations
+                    payload_patient_id = payload.get("patient_id")
+                    
+                    # Check in case_metadata dict
+                    metadata_patient_id = None
+                    case_metadata = payload.get("case_metadata")
+                    if isinstance(case_metadata, dict):
+                        metadata_patient_id = case_metadata.get("patient_id")
+                    
+                    # Check in case_data dict
+                    case_data_patient_id = None
+                    case_data = payload.get("case_data")
+                    if isinstance(case_data, dict):
+                        case_data_patient_id = case_data.get("patient_id")
+                    
+                    # Also check if patient_id is in the case_id
+                    case_id_contains_patient = False
+                    case_id = payload.get("case_id") or str(doc.get("id", ""))
+                    if patient_id_filter in case_id:
+                        case_id_contains_patient = True
+                    
+                    # Match if any of these match
+                    if (payload_patient_id == patient_id_filter or 
+                        metadata_patient_id == patient_id_filter or 
+                        case_data_patient_id == patient_id_filter or
+                        case_id_contains_patient):
+                        filtered_documents.append(doc)
+                
+                logger.info(f"Filtered {len(filtered_documents)} documents for patient_id: {patient_id_filter} (from {len(matching_documents)} total)")
+                matching_documents = filtered_documents[:limit]  # Apply limit after filtering
             
             logger.info(f"Found {len(matching_documents)} matching documents")
             return matching_documents

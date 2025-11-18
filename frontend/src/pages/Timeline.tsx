@@ -17,17 +17,84 @@ import { ClockIcon, UserIcon, MagnifyingGlassIcon } from '@heroicons/react/24/ou
 export function Timeline() {
   const [patientId, setPatientId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingPatients, setIsLoadingPatients] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [trendMetrics, setTrendMetrics] = useState<TrendMetric[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+  const [availablePatients, setAvailablePatients] = useState<Array<{id: string; caseCount: number; lastVisit: string}>>([]);
+
+  /**
+   * Fetch list of available patients
+   */
+  const fetchAvailablePatients = async () => {
+    setIsLoadingPatients(true);
+    try {
+      // Fetch all cases to extract unique patient IDs
+      const response = await ClinicalMemoryService.recallSimilarCases({
+        query_text: '', // Empty query to get all cases
+        limit: 200, // Get more cases to find all patients
+        time_range_days: 365, // Last year
+      });
+
+      if (response.success && response.data) {
+        const cases = response.data.similar_cases;
+        
+        // Group cases by patient_id
+        const patientMap = new Map<string, {caseCount: number; lastVisit: string}>();
+        
+        cases.forEach((caseData: any) => {
+          // Try multiple locations for patient_id
+          const pid = caseData.patient_id || 
+                     caseData.case_data?.patient_id ||
+                     caseData.metadata?.patient_id ||
+                     caseData.case_id?.split('_').slice(-1)[0]; // Extract from case_id if present
+          
+          if (pid) {
+            const existing = patientMap.get(pid) || {caseCount: 0, lastVisit: ''};
+            existing.caseCount += 1;
+            
+            const timestamp = caseData.metadata?.timestamp || 
+                            caseData.case_data?.timestamp || 
+                            caseData.timestamp || '';
+            if (timestamp && timestamp > existing.lastVisit) {
+              existing.lastVisit = timestamp;
+            }
+            
+            patientMap.set(pid, existing);
+          }
+        });
+        
+        // Convert to array and sort by last visit (most recent first)
+        const patients = Array.from(patientMap.entries())
+          .map(([id, data]) => ({
+            id,
+            caseCount: data.caseCount,
+            lastVisit: data.lastVisit
+          }))
+          .sort((a, b) => b.lastVisit.localeCompare(a.lastVisit));
+        
+        setAvailablePatients(patients);
+        
+        // Auto-select first patient if none selected
+        if (!patientId && patients.length > 0) {
+          setPatientId(patients[0].id);
+          fetchTimeline(patients[0].id);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error fetching patients:', err);
+    } finally {
+      setIsLoadingPatients(false);
+    }
+  };
 
   /**
    * Fetch timeline data for a patient
    */
   const fetchTimeline = async (id: string) => {
     if (!id.trim()) {
-      setError('Please enter a patient ID');
+      setError('Please select a patient');
       return;
     }
 
@@ -35,22 +102,16 @@ export function Timeline() {
     setError(null);
 
     try {
-      // Fetch cases (API limit is 20, we'll filter by patient_id client-side)
-      // Note: Ideally we'd have a dedicated timeline endpoint with patient_id filtering
+      // Use patient_id filter for accurate timeline retrieval
       const response = await ClinicalMemoryService.recallSimilarCases({
-        query_text: id, // Use patient ID as query to get relevant cases
-        limit: 20, // API limit
+        query_text: '', // Empty query - we're filtering by patient_id
+        patient_id: id, // Use patient_id filter for accurate results
+        limit: 100, // Get more cases for timeline (increased from 20)
         time_range_days: 365, // Last year
       });
 
       if (response.success && response.data) {
-        // Filter cases by patient_id (client-side filtering)
-        const patientCases = response.data.similar_cases.filter((caseData: any) => {
-          const metadata = caseData.metadata || {};
-          const caseId = caseData.case_id || '';
-          // Check if patient_id matches or is in case_id
-          return caseId.includes(id) || metadata.patient_id === id;
-        });
+        const patientCases = response.data.similar_cases;
 
         if (patientCases.length === 0) {
           setError(`No cases found for patient ${id}. Try a different patient ID.`);
@@ -162,7 +223,17 @@ export function Timeline() {
    * Handle search
    */
   const handleSearch = () => {
-    fetchTimeline(patientId);
+    if (patientId.trim()) {
+      fetchTimeline(patientId.trim());
+    }
+  };
+
+  /**
+   * Handle patient selection
+   */
+  const handlePatientSelect = (selectedId: string) => {
+    setPatientId(selectedId);
+    fetchTimeline(selectedId);
   };
 
   /**
@@ -173,6 +244,11 @@ export function Timeline() {
     // Could open a modal or navigate to case details
     console.log('Event clicked:', event);
   };
+
+  // Load available patients on mount
+  useEffect(() => {
+    fetchAvailablePatients();
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -191,32 +267,79 @@ export function Timeline() {
         </p>
       </div>
 
-      {/* Patient Search */}
-      <div className="mb-6 bg-white dark:bg-[#1E293B] rounded-lg border border-slate/20 dark:border-[#475569]/30 p-6">
-        <div className="flex items-center space-x-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
-              <UserIcon className="h-4 w-4 inline mr-1" />
-              Patient ID
-            </label>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Enter patient ID to view timeline"
-                className="flex-1 px-4 py-2 border border-slate/30 dark:border-[#475569]/30 rounded-lg bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white placeholder-[#64748B] dark:placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
-              />
-              <button
-                type="button"
-                onClick={handleSearch}
-                disabled={isLoading}
-                className="px-6 py-2 bg-[#2563EB] dark:bg-[#3B82F6] text-white rounded-lg hover:bg-[#1E3A8A] dark:hover:bg-[#2563EB] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-              >
-                <MagnifyingGlassIcon className="h-5 w-5" />
-                <span>Search</span>
-              </button>
+      {/* Patient Selection Section */}
+      <div className="mb-6">
+        <div className="bg-white dark:bg-[#1E293B] rounded-lg border border-slate/20 dark:border-[#475569]/30 p-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-[#0F172A] dark:text-white">
+                <UserIcon className="h-4 w-4 inline mr-1" />
+                Select Patient
+              </label>
+              {isLoadingPatients && (
+                <span className="text-sm text-[#64748B] dark:text-[#94A3B8]">Loading patients...</span>
+              )}
+            </div>
+            
+            {availablePatients.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto">
+                {availablePatients.map((patient) => (
+                  <button
+                    key={patient.id}
+                    onClick={() => handlePatientSelect(patient.id)}
+                    className={`p-3 rounded-lg border text-left transition-colors ${
+                      patientId === patient.id
+                        ? 'bg-[#2563EB] dark:bg-[#3B82F6] text-white border-[#2563EB]'
+                        : 'bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white border-slate/30 dark:border-[#475569]/30 hover:border-[#2563EB]/50'
+                    }`}
+                  >
+                    <div className="font-medium">{patient.id}</div>
+                    <div className={`text-xs mt-1 ${
+                      patientId === patient.id
+                        ? 'text-white/80'
+                        : 'text-[#64748B] dark:text-[#94A3B8]'
+                    }`}>
+                      {patient.caseCount} case{patient.caseCount !== 1 ? 's' : ''}
+                      {patient.lastVisit && (
+                        <span className="ml-2">
+                          • {new Date(patient.lastVisit).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : !isLoadingPatients ? (
+              <div className="text-center py-4 text-[#64748B] dark:text-[#94A3B8]">
+                No patients found. Cases will appear here once data is available.
+              </div>
+            ) : null}
+            
+            {/* Manual Search Option */}
+            <div className="mt-4 pt-4 border-t border-slate/20 dark:border-[#475569]/30">
+              <label htmlFor="patient-id" className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
+                Or Enter Patient ID Manually
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  id="patient-id"
+                  value={patientId}
+                  onChange={(e) => setPatientId(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder="Enter patient ID to view timeline"
+                  className="flex-1 px-4 py-2 border border-slate/30 dark:border-[#475569]/30 rounded-lg bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white placeholder-[#64748B] dark:placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+                />
+                <button
+                  type="button"
+                  onClick={handleSearch}
+                  disabled={isLoading}
+                  className="px-6 py-2 bg-[#2563EB] dark:bg-[#3B82F6] text-white rounded-lg hover:bg-[#1E3A8A] dark:hover:bg-[#2563EB] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  <MagnifyingGlassIcon className="h-5 w-5" />
+                  <span>Search</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -60,36 +60,74 @@ export function Analytics() {
 
     try {
       // Fetch temporal clustering data
+      // Convert date strings to ISO datetime strings
+      const startTime = filters.timeRange.start 
+        ? new Date(filters.timeRange.start).toISOString()
+        : undefined;
+      const endTime = filters.timeRange.end
+        ? new Date(filters.timeRange.end + 'T23:59:59').toISOString() // Include full day
+        : undefined;
+      
+      console.log('Fetching temporal clustering with:', {
+        time_granularity: filters.timeGranularity,
+        start_time: startTime,
+        end_time: endTime,
+        region: filters.region,
+      });
+      
       const clusteringResponse = await ClinicalMemoryService.performTemporalClustering({
         time_granularity: filters.timeGranularity || 'weekly',
-        start_time: filters.timeRange.start,
-        end_time: filters.timeRange.end,
+        start_time: startTime,
+        end_time: endTime,
         region: filters.region,
         min_cluster_size: 3,
       });
 
       if (clusteringResponse.success && clusteringResponse.data) {
+        console.log('Clustering response:', clusteringResponse.data);
+        
         // Convert clusters to ClusterData format
-        const clusters: ClusterData[] = clusteringResponse.data.clusters.map((cluster: any) => ({
-          cluster_id: cluster.cluster_id || cluster.id || '',
-          time_window: cluster.time_window || '',
-          case_count: cluster.case_count || 0,
-          characteristics: cluster.characteristics || {
-            symptoms: [],
-            diagnoses: [],
-            locations: [],
-          },
-          pattern_insights: cluster.pattern_insights || [],
-        }));
+        const clusters: ClusterData[] = clusteringResponse.data.clusters.map((cluster: any) => {
+          // Handle time_window - API returns {start, end} object
+          const timeWindow = cluster.time_window;
+          const timeWindowStr = typeof timeWindow === 'string' 
+            ? timeWindow 
+            : timeWindow?.start || timeWindow?.end || '';
+          
+          // Handle case_count - API returns 'size'
+          const caseCount = cluster.case_count || cluster.size || 0;
+          
+          // Handle characteristics - API returns diagnoses/symptoms at top level
+          const characteristics = cluster.characteristics || {
+            symptoms: cluster.symptoms || [],
+            diagnoses: cluster.diagnoses || [],
+            locations: cluster.locations || [],
+          };
+          
+          return {
+            cluster_id: cluster.cluster_id || cluster.id || '',
+            time_window: timeWindowStr,
+            case_count: caseCount,
+            characteristics: characteristics,
+            pattern_insights: cluster.pattern_insights || [],
+          };
+        });
+        
+        console.log('Processed clusters:', clusters);
         setClusterData(clusters);
 
         // Generate trend data from clusters
         const trendPoints: TrendDataPoint[] = clusters.map((cluster) => ({
           date: cluster.time_window,
           value: cluster.case_count,
-          label: cluster.characteristics.diagnoses[0] || 'Unknown',
+          label: cluster.characteristics?.diagnoses?.[0] || 'Unknown',
         }));
         setTrendData(trendPoints);
+      } else {
+        console.warn('Clustering response not successful:', clusteringResponse);
+        // Set empty arrays if no data
+        setClusterData([]);
+        setTrendData([]);
       }
 
       // Fetch regional analytics if region is selected
@@ -105,8 +143,11 @@ export function Analytics() {
         });
 
         if (analyticsResponse.success && analyticsResponse.data) {
+          console.log('Regional analytics response:', analyticsResponse.data);
+          
           // Convert disease trends to heatmap data
-          const heatmap: HeatmapData[] = analyticsResponse.data.disease_trends.map(
+          const diseaseTrends = analyticsResponse.data.disease_trends || [];
+          const heatmap: HeatmapData[] = diseaseTrends.map(
             (trend: any) => ({
               clinic: filters.region || 'Unknown',
               disease: trend.disease || trend.disease_name || 'Unknown',
@@ -122,22 +163,28 @@ export function Analytics() {
           setHeatmapData(heatmap);
 
           // Set outbreak alerts
-          const alerts: OutbreakAlertData[] = analyticsResponse.data.outbreak_alerts.map(
+          const outbreakAlerts = analyticsResponse.data.outbreak_alerts || [];
+          const alerts: OutbreakAlertData[] = outbreakAlerts.map(
             (alert: any) => ({
               disease: alert.disease || alert.disease_name || 'Unknown',
-              severity: alert.severity || 'low',
-              cases: alert.cases || 0,
-              recommendation: alert.recommendation || 'Monitor closely',
+              severity: alert.severity || alert.level || 'low',
+              cases: alert.cases || alert.case_count || 0,
+              recommendation: alert.recommendation || alert.message || 'Monitor closely',
               region: filters.region,
             })
           );
           setOutbreakAlerts(alerts);
 
           // Extract available diseases
-          const diseases = analyticsResponse.data.disease_trends.map(
+          const diseases = diseaseTrends.map(
             (trend: any) => trend.disease || trend.disease_name
-          );
+          ).filter(Boolean);
           setAvailableDiseases([...new Set(diseases)]);
+        } else {
+          console.warn('Regional analytics response not successful:', analyticsResponse);
+          // Set empty arrays if no data
+          setHeatmapData([]);
+          setOutbreakAlerts([]);
         }
       } else {
         // If no region selected, clear region-specific data

@@ -26,7 +26,6 @@ load_dotenv()
 
 from src.storage.qdrant_storage import QdrantStorage
 from src.embeddings import BioBERTEmbeddingGenerator
-from src.storage.schema import StorageMetadata, ModalityType
 from src.api.clinical_memory_api import get_qdrant_storage
 
 import logging
@@ -338,37 +337,87 @@ def populate_covid_patients():
             # Generate embedding
             embedding = embedder.generate_embedding(transcript[:2000])
             
-            # Create transcript data
-            transcript_data = {
-                "transcript": transcript[:5000],
-                "session_id": f"case_{visit_date.strftime('%Y%m%d%H%M%S')}_{patient_id}_visit{visit_num}",
-                "metadata": {
-                    "patient_id": patient_id,
-                    "age_group": "elderly" if age >= 60 else "adult",
-                    "region": region,
-                    "comorbidities": comorbidities,
-                    "diagnosis": f"COVID-19, {severity} severity",
-                    "outcome": "recovered" if visit_num == num_visits and random.random() > 0.2 else "under_treatment",
-                    "visit_number": visit_num,
-                    "covid_positive": True,
-                    "severity": severity
-                },
+            # Determine age_group from age
+            if age < 18:
+                age_group = "pediatric"
+            elif age >= 65:
+                age_group = "elderly"
+            else:
+                age_group = "adult"
+            
+            # Prepare case_metadata according to CaseMetadata model
+            case_metadata = {
                 "timestamp": visit_date.isoformat(),
-                "confidence": 1.0,
-                "processed_at": datetime.now(timezone.utc).isoformat()
+                "age_group": age_group,
+                "region": region,
+                "comorbidities": comorbidities,
+                "diagnosis": f"COVID-19, {severity} severity",
+                "outcome": "recovered" if visit_num == num_visits and random.random() > 0.2 else "under_treatment"
             }
             
-            # Create metadata
-            metadata = StorageMetadata(
-                session_id=transcript_data["session_id"],
-                patient_id=patient_id,
-                timestamp=visit_date,
-                modality=ModalityType.TEXT,
-                confidence=1.0
+            # Extract symptoms from transcript for medical_entities
+            symptoms_found = [s for s in COVID_SYMPTOMS if s.lower() in transcript.lower()]
+            
+            # Create medical_entities structure for outbreak detection compatibility
+            medical_entities = []
+            # Add symptoms as entities
+            for symptom in symptoms_found[:10]:  # Limit to 10 most relevant
+                medical_entities.append({
+                    "text": symptom,
+                    "entity_type": "symptom",
+                    "confidence": 0.9,
+                    "normalized_form": symptom.lower()
+                })
+            # Add diagnosis as entity
+            medical_entities.append({
+                "text": f"COVID-19, {severity} severity",
+                "entity_type": "diagnosis",
+                "confidence": 0.95,
+                "normalized_form": "covid-19"
+            })
+            # Add comorbidities as entities
+            for comorbidity in comorbidities:
+                medical_entities.append({
+                    "text": comorbidity,
+                    "entity_type": "comorbidity",
+                    "confidence": 0.9,
+                    "normalized_form": comorbidity.lower()
+                })
+            
+            # Prepare payload matching the structure used by case ingestion orchestrator
+            # Also include fields needed for outbreak detection and analytics
+            case_id = f"case_{visit_date.strftime('%Y%m%d%H%M%S')}_{patient_id}_visit{visit_num}"
+            payload = {
+                "modality_type": "text",
+                "transcript": transcript[:5000],
+                "case_metadata": case_metadata,
+                "timestamp": visit_date.isoformat(),
+                # Additional fields for outbreak detection compatibility
+                "patient_id": patient_id,
+                "region": region,  # Direct access for filtering
+                "diagnosis": f"COVID-19, {severity} severity",  # Direct access for filtering
+                "symptoms": symptoms_found[:10],  # For outbreak detection
+                "medical_entities": medical_entities,  # Structured entities for outbreak detection
+                "age_group": age_group,
+                "source": "covid_demo",
+                "covid_positive": True,
+                "severity": severity,
+                "visit_number": visit_num
+            }
+            
+            # Store in Qdrant using PointStruct (matching multimodal format)
+            point_id = str(uuid.uuid4())
+            from qdrant_client.models import PointStruct
+            point = PointStruct(
+                id=point_id,
+                vector=embedding,
+                payload=payload
+            )
+            patient_storage.client.upsert(
+                collection_name=patient_storage.collection_name,
+                points=[point]
             )
             
-            # Store
-            patient_storage.store_transcript(transcript_data, embedding, metadata)
             covid_patients.append(patient_id)
             
             logger.info(f"  ✓ Stored visit {visit_num} for {patient_id} ({severity} severity)")
@@ -412,37 +461,80 @@ def populate_covid_patients():
             # Generate embedding
             embedding = embedder.generate_embedding(transcript[:2000])
             
-            # Create transcript data
-            transcript_data = {
-                "transcript": transcript[:5000],
-                "session_id": f"case_{visit_date.strftime('%Y%m%d%H%M%S')}_{patient_id}_visit{visit_num}",
-                "metadata": {
-                    "patient_id": patient_id,
-                    "age_group": "elderly" if age >= 60 else "adult",
-                    "region": region,
-                    "comorbidities": [],
-                    "diagnosis": diagnosis,
-                    "outcome": "recovered" if visit_num == num_visits else "improved",
-                    "visit_number": visit_num,
-                    "covid_positive": False,
-                    "covid_test_result": "negative"
-                },
+            # Determine age_group from age
+            if age < 18:
+                age_group = "pediatric"
+            elif age >= 65:
+                age_group = "elderly"
+            else:
+                age_group = "adult"
+            
+            # Extract symptoms from transcript
+            symptoms_list = COVID_LIKE_SYMPTOMS[diagnosis]
+            symptoms_found = [s for s in symptoms_list if s.lower() in transcript.lower()]
+            
+            # Prepare case_metadata according to CaseMetadata model
+            case_metadata = {
                 "timestamp": visit_date.isoformat(),
-                "confidence": 1.0,
-                "processed_at": datetime.now(timezone.utc).isoformat()
+                "age_group": age_group,
+                "region": region,
+                "comorbidities": [],
+                "diagnosis": diagnosis,
+                "outcome": "recovered" if visit_num == num_visits else "improved"
             }
             
-            # Create metadata
-            metadata = StorageMetadata(
-                session_id=transcript_data["session_id"],
-                patient_id=patient_id,
-                timestamp=visit_date,
-                modality=ModalityType.TEXT,
-                confidence=1.0
+            # Create medical_entities structure for outbreak detection compatibility
+            medical_entities = []
+            # Add symptoms as entities
+            for symptom in symptoms_found:
+                medical_entities.append({
+                    "text": symptom,
+                    "entity_type": "symptom",
+                    "confidence": 0.9,
+                    "normalized_form": symptom.lower()
+                })
+            # Add diagnosis as entity
+            medical_entities.append({
+                "text": diagnosis,
+                "entity_type": "diagnosis",
+                "confidence": 0.9,
+                "normalized_form": diagnosis.lower()
+            })
+            
+            # Prepare payload matching the structure used by case ingestion orchestrator
+            # Also include fields needed for outbreak detection and analytics
+            case_id = f"case_{visit_date.strftime('%Y%m%d%H%M%S')}_{patient_id}_visit{visit_num}"
+            payload = {
+                "modality_type": "text",
+                "transcript": transcript[:5000],
+                "case_metadata": case_metadata,
+                "timestamp": visit_date.isoformat(),
+                # Additional fields for outbreak detection compatibility
+                "patient_id": patient_id,
+                "region": region,  # Direct access for filtering
+                "diagnosis": diagnosis,  # Direct access for filtering
+                "symptoms": symptoms_found,  # For outbreak detection
+                "medical_entities": medical_entities,  # Structured entities for outbreak detection
+                "age_group": age_group,
+                "source": "covid_like_demo",
+                "covid_positive": False,
+                "covid_test_result": "negative",
+                "visit_number": visit_num
+            }
+            
+            # Store in Qdrant using PointStruct (matching multimodal format)
+            point_id = str(uuid.uuid4())
+            from qdrant_client.models import PointStruct
+            point = PointStruct(
+                id=point_id,
+                vector=embedding,
+                payload=payload
+            )
+            patient_storage.client.upsert(
+                collection_name=patient_storage.collection_name,
+                points=[point]
             )
             
-            # Store
-            patient_storage.store_transcript(transcript_data, embedding, metadata)
             covid_like_patients.append(patient_id)
             
             logger.info(f"  ✓ Stored visit {visit_num} for {patient_id} ({diagnosis})")

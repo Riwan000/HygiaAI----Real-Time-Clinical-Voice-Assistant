@@ -34,6 +34,7 @@ class RetrievalOptions:
     keyword_weight: float = 0.3
     
     # Filter options
+    patient_id: Optional[str] = None
     age_group: Optional[str] = None
     age_range: Optional[Dict[str, int]] = None  # {"gte": 30, "lte": 50}
     region: Optional[str] = None
@@ -58,6 +59,10 @@ class RetrievalOptions:
     def to_filters(self) -> Dict[str, Any]:
         """Convert options to Qdrant filter dictionary"""
         filters = {}
+        
+        # Patient ID filter
+        if self.patient_id:
+            filters["patient_id"] = self.patient_id
         
         # Age filters
         if self.age_group:
@@ -186,34 +191,43 @@ class CaseRetriever:
         """
         options = options or RetrievalOptions()
         
-        # Generate query embedding if not provided
-        if query_embedding is None:
-            if query_text and query_image_path:
-                # Multi-modal query
-                multimodal_result = self.multimodal_embedding_generator.generate_multimodal_embedding(
-                    text=query_text,
-                    image_path=query_image_path
-                )
-                query_embedding = multimodal_result.get("multimodal_embedding")
-            elif query_text:
-                # Text-only query
-                query_embedding = self.text_embedding_generator.generate_embedding(query_text)
-            elif query_image_path:
-                # Image-only query
-                query_embedding = self.image_embedding_generator.generate_embedding(query_image_path)
-            else:
-                raise ValueError("Must provide query_text, query_image_path, or query_embedding")
-        
         # Convert options to filters
         filters = options.to_filters()
         
-        # Perform retrieval based on mode
-        if options.mode == RetrievalMode.SEMANTIC:
-            results = self._semantic_search(query_embedding, filters, options)
-        elif options.mode == RetrievalMode.KEYWORD:
-            results = self._keyword_search(filters, options)
-        else:  # HYBRID
-            results = self._hybrid_search(query_text or "", query_embedding, filters, options)
+        # Optimize: Use scroll API when query is empty (with or without filters)
+        # This is much faster than semantic search with dummy embeddings
+        if not query_text and not query_image_path and not query_embedding:
+            if filters:
+                results = self._scroll_with_filters(filters, options)
+            else:
+                # No filters and no query - use scroll to get all cases
+                results = self._scroll_with_filters({}, options)
+        else:
+            # Generate query embedding if not provided
+            if query_embedding is None:
+                if query_text and query_image_path:
+                    # Multi-modal query
+                    multimodal_result = self.multimodal_embedding_generator.generate_multimodal_embedding(
+                        text=query_text,
+                        image_path=query_image_path
+                    )
+                    query_embedding = multimodal_result.get("multimodal_embedding")
+                elif query_text:
+                    # Text-only query
+                    query_embedding = self.text_embedding_generator.generate_embedding(query_text)
+                elif query_image_path:
+                    # Image-only query
+                    query_embedding = self.image_embedding_generator.generate_embedding(query_image_path)
+                else:
+                    raise ValueError("Must provide query_text, query_image_path, or query_embedding")
+            
+            # Perform retrieval based on mode
+            if options.mode == RetrievalMode.SEMANTIC:
+                results = self._semantic_search(query_embedding, filters, options)
+            elif options.mode == RetrievalMode.KEYWORD:
+                results = self._keyword_search(filters, options)
+            else:  # HYBRID
+                results = self._hybrid_search(query_text or "", query_embedding, filters, options)
         
         # Format results
         formatted_results = self._format_results(results, options)
@@ -251,6 +265,173 @@ class CaseRetriever:
             score_threshold=options.score_threshold
         )
         return results
+    
+    def _scroll_with_filters(
+        self,
+        filters: Dict[str, Any],
+        options: RetrievalOptions
+    ) -> List[Dict[str, Any]]:
+        """Use Qdrant scroll API with filters for efficient retrieval when no query text"""
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
+            from datetime import datetime, timezone
+            
+            # Extract timestamp and patient_id filters separately - we'll filter in Python
+            # Timestamps are ISO strings and patient_id may not have an index
+            timestamp_filter = None
+            patient_id_filter = None
+            filters_copy = filters.copy() if filters else {}
+            if "timestamp" in filters_copy:
+                timestamp_filter = filters_copy.pop("timestamp")
+            if "patient_id" in filters_copy:
+                patient_id_filter = filters_copy.pop("patient_id")
+            filters = filters_copy
+            
+            # Build Qdrant filter from remaining filters (excluding timestamp)
+            qdrant_filter = None
+            conditions = []
+            
+            if filters:
+                for key, value in filters.items():
+                    if isinstance(value, dict):
+                        # Range filter (for non-timestamp fields)
+                        if "gte" in value or "lte" in value or "gt" in value or "lt" in value:
+                            conditions.append(
+                                FieldCondition(key=key, range=Range(**value))
+                            )
+                        elif "in" in value:
+                            # In filter (for lists)
+                            from qdrant_client.models import MatchAny
+                            conditions.append(
+                                FieldCondition(key=key, match=MatchAny(any=value["in"]))
+                            )
+                    else:
+                        # Exact match
+                        conditions.append(
+                            FieldCondition(key=key, match=MatchValue(value=value))
+                        )
+                
+                if conditions:
+                    qdrant_filter = Filter(must=conditions)
+            
+            # Use scroll API with filters (excluding timestamp and patient_id)
+            # If no filters, scroll will return all cases
+            scroll_result = self.storage.client.scroll(
+                collection_name=self.storage.collection_name,
+                scroll_filter=qdrant_filter if qdrant_filter else None,
+                limit=min(options.limit, 1000),  # Cap at 1000 for performance
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            # Convert scroll results to search result format
+            results = []
+            for point in scroll_result[0]:  # scroll_result is (points, next_page_offset)
+                results.append({
+                    "id": point.id,
+                    "score": 1.0,  # No similarity score for scroll
+                    "payload": point.payload or {}
+                })
+            
+            # Apply time range filtering in Python (since timestamps are stored as ISO strings)
+            if timestamp_filter and isinstance(timestamp_filter, dict):
+                gte_time = timestamp_filter.get("gte")
+                lte_time = timestamp_filter.get("lte")
+                
+                # Convert ISO strings or datetime objects to datetime for comparison
+                if isinstance(gte_time, str):
+                    try:
+                        gte_time = datetime.fromisoformat(gte_time.replace('Z', '+00:00'))
+                    except (ValueError, AttributeError):
+                        gte_time = None
+                elif isinstance(gte_time, datetime):
+                    pass  # Already datetime
+                else:
+                    gte_time = None
+                
+                if isinstance(lte_time, str):
+                    try:
+                        lte_time = datetime.fromisoformat(lte_time.replace('Z', '+00:00'))
+                    except (ValueError, AttributeError):
+                        lte_time = None
+                elif isinstance(lte_time, datetime):
+                    pass  # Already datetime
+                else:
+                    lte_time = None
+                
+                if gte_time or lte_time:
+                    filtered_results = []
+                    for result in results:
+                        payload = result.get("payload", {})
+                        timestamp_str = payload.get("timestamp")
+                        if timestamp_str:
+                            try:
+                                # Parse timestamp from payload
+                                if isinstance(timestamp_str, str):
+                                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                                elif isinstance(timestamp_str, (int, float)):
+                                    timestamp = datetime.fromtimestamp(timestamp_str, tz=timezone.utc)
+                                else:
+                                    continue
+                                
+                                # Check if timestamp is within range
+                                matches = True
+                                if gte_time and timestamp < gte_time:
+                                    matches = False
+                                if lte_time and timestamp > lte_time:
+                                    matches = False
+                                
+                                if matches:
+                                    filtered_results.append(result)
+                            except Exception as e:
+                                logger.debug(f"Error parsing timestamp {timestamp_str}: {e}")
+                                continue
+                    
+                    results = filtered_results
+            
+            # Apply patient_id filtering in Python (since it may not have an index)
+            if patient_id_filter:
+                filtered_results = []
+                for result in results:
+                    payload = result.get("payload", {})
+                    # Check patient_id in multiple possible locations
+                    payload_patient_id = payload.get("patient_id")
+                    
+                    # Check in case_metadata dict
+                    metadata_patient_id = None
+                    case_metadata = payload.get("case_metadata")
+                    if isinstance(case_metadata, dict):
+                        metadata_patient_id = case_metadata.get("patient_id")
+                    
+                    # Check in case_data dict
+                    case_data_patient_id = None
+                    case_data = payload.get("case_data")
+                    if isinstance(case_data, dict):
+                        case_data_patient_id = case_data.get("patient_id")
+                    
+                    # Also check if patient_id is in the case_id (some cases have patient_id in case_id)
+                    case_id_contains_patient = False
+                    case_id = payload.get("case_id") or str(result.get("id", ""))
+                    if patient_id_filter in case_id:
+                        case_id_contains_patient = True
+                    
+                    # Match if any of these match
+                    if (payload_patient_id == patient_id_filter or 
+                        metadata_patient_id == patient_id_filter or 
+                        case_data_patient_id == patient_id_filter or
+                        case_id_contains_patient):
+                        filtered_results.append(result)
+                
+                logger.info(f"Filtered {len(filtered_results)} cases for patient_id: {patient_id_filter} (from {len(results)} total)")
+                results = filtered_results[:options.limit]
+            
+            logger.info(f"Scrolled {len(results)} cases with filters")
+            return results
+            
+        except Exception as e:
+            logger.warning(f"Error using scroll API, falling back to keyword search: {e}")
+            # Fallback to keyword search (which also filters timestamps in Python)
+            return self._keyword_search(filters, options)
     
     def _hybrid_search(
         self,
@@ -299,10 +480,12 @@ class CaseRetriever:
             # Extract modalities
             modalities = {}
             if payload.get("transcript"):
+                # Check for SOAP note in multiple possible locations
+                soap_note = payload.get("soap_note") or payload.get("soap_notes")
                 modalities["text"] = {
                     "transcript": payload.get("transcript"),
                     "entities": payload.get("medical_entities", []),
-                    "soap": payload.get("soap_notes")
+                    "soap": soap_note
                 }
             if payload.get("image_path"):
                 modalities["image"] = {
