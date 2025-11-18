@@ -80,7 +80,7 @@ export function Analytics() {
         start_time: startTime,
         end_time: endTime,
         region: filters.region,
-        min_cluster_size: 1, // Lower threshold to show more clusters
+        min_cluster_size: 2, // Minimum allowed by backend validation
       });
 
       if (clusteringResponse.success && clusteringResponse.data) {
