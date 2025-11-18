@@ -123,14 +123,57 @@ export function Timeline() {
         const events: TimelineEvent[] = [];
         const metrics: TrendMetric[] = [];
 
-        patientCases.forEach((caseData: any, index: number) => {
-          const metadata = caseData.metadata || {};
-          const timestamp = metadata.timestamp || new Date().toISOString();
-          const diagnosis = metadata.diagnosis || 'Unknown';
-          const outcome = metadata.outcome || 'Pending';
+        console.log(`Processing ${patientCases.length} cases for timeline`);
 
-          // Create diagnosis event
-          if (diagnosis && diagnosis !== 'Unknown') {
+        patientCases.forEach((caseData: any, index: number) => {
+          // Try multiple locations for metadata
+          const metadata = caseData.metadata || caseData.case_data?.case_metadata || {};
+          const caseDataPayload = caseData.case_data || {};
+          
+          // Get timestamp from multiple locations
+          const timestamp = metadata.timestamp || 
+                          caseDataPayload.timestamp || 
+                          caseData.timestamp || 
+                          new Date().toISOString();
+          
+          // Get diagnosis from multiple locations
+          const diagnosis = metadata.diagnosis || 
+                          caseDataPayload.diagnosis || 
+                          caseData.diagnosis || 
+                          null;
+          
+          // Get outcome from multiple locations
+          const outcome = metadata.outcome || 
+                         caseDataPayload.outcome || 
+                         caseData.outcome || 
+                         null;
+          
+          // Get transcript for description
+          const transcript = caseDataPayload.transcript || 
+                           caseData.transcript || 
+                           '';
+          
+          // Always create at least one event per case (case record)
+          const caseDescription = transcript 
+            ? `${transcript.substring(0, 100)}${transcript.length > 100 ? '...' : ''}`
+            : `Case visit on ${new Date(timestamp).toLocaleDateString()}`;
+          
+          // Create a basic case event (always shown)
+          events.push({
+            id: `case_${caseData.case_id}`,
+            type: 'followup', // Use followup as default type
+            timestamp,
+            title: `Case Visit ${index + 1}`,
+            description: caseDescription,
+            metadata: {
+              diagnosis: diagnosis || undefined,
+              outcome: outcome || undefined,
+              severity: 'medium',
+            },
+          });
+
+          // Create diagnosis event if available
+          if (diagnosis && diagnosis !== 'Unknown' && diagnosis !== 'null' && diagnosis.trim() !== '') {
             events.push({
               id: `diagnosis_${caseData.case_id}`,
               type: 'diagnosis',
@@ -139,21 +182,21 @@ export function Timeline() {
               description: `Patient diagnosed with ${diagnosis}`,
               metadata: {
                 diagnosis,
-                severity: outcome.toLowerCase().includes('severe') ? 'high' : 'medium',
+                severity: outcome && outcome.toLowerCase().includes('severe') ? 'high' : 'medium',
               },
             });
           }
 
           // Create treatment event (if outcome suggests treatment)
-          if (outcome && outcome !== 'Pending') {
+          if (outcome && outcome !== 'Pending' && outcome !== 'null' && outcome.trim() !== '') {
             events.push({
               id: `treatment_${caseData.case_id}`,
               type: 'treatment',
               timestamp: new Date(new Date(timestamp).getTime() + 24 * 60 * 60 * 1000).toISOString(), // Next day
               title: `Treatment Plan Initiated`,
-              description: `Treatment started for ${diagnosis}`,
+              description: `Treatment started${diagnosis ? ` for ${diagnosis}` : ''}`,
               metadata: {
-                diagnosis,
+                diagnosis: diagnosis || undefined,
                 treatment: outcome,
                 effectiveness: outcome.toLowerCase().includes('improved') ? 75 : outcome.toLowerCase().includes('recovered') ? 90 : 50,
               },
@@ -172,8 +215,8 @@ export function Timeline() {
             });
           }
 
-          // Create outcome event
-          if (outcome && outcome !== 'Pending') {
+          // Create outcome event if available
+          if (outcome && outcome !== 'Pending' && outcome !== 'null' && outcome.trim() !== '') {
             events.push({
               id: `outcome_${caseData.case_id}`,
               type: 'outcome',
@@ -181,30 +224,34 @@ export function Timeline() {
               title: `Outcome: ${outcome}`,
               description: `Patient outcome: ${outcome}`,
               metadata: {
-                diagnosis,
+                diagnosis: diagnosis || undefined,
                 outcome,
               },
             });
           }
 
           // Check for recurrence (same diagnosis appearing multiple times)
-          const sameDiagnosisCount = events.filter(
-            (e) => e.metadata?.diagnosis === diagnosis && e.type === 'diagnosis'
-          ).length;
-          if (sameDiagnosisCount > 1) {
-            events.push({
-              id: `recurrence_${caseData.case_id}`,
-              type: 'recurrence',
-              timestamp,
-              title: `Recurrence Detected: ${diagnosis}`,
-              description: `This is recurrence #${sameDiagnosisCount} of ${diagnosis}`,
-              metadata: {
-                diagnosis,
-                severity: 'medium',
-              },
-            });
+          if (diagnosis && diagnosis !== 'Unknown') {
+            const sameDiagnosisCount = events.filter(
+              (e) => e.metadata?.diagnosis === diagnosis && e.type === 'diagnosis'
+            ).length;
+            if (sameDiagnosisCount > 1) {
+              events.push({
+                id: `recurrence_${caseData.case_id}`,
+                type: 'recurrence',
+                timestamp,
+                title: `Recurrence Detected: ${diagnosis}`,
+                description: `This is recurrence #${sameDiagnosisCount} of ${diagnosis}`,
+                metadata: {
+                  diagnosis,
+                  severity: 'medium',
+                },
+              });
+            }
           }
         });
+
+        console.log(`Created ${events.length} timeline events from ${patientCases.length} cases`);
 
         setTimelineEvents(events);
         setTrendMetrics(metrics);
