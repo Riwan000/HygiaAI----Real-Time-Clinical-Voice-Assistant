@@ -17,20 +17,22 @@ def main():
     print(f"PATH: {os.getenv('PATH', '')}", file=sys.stderr)
     print(f"Working directory: {os.getcwd()}", file=sys.stderr)
     
-    # Verify uvicorn is available - check PATH first
+    # Verify uvicorn is available - check PATH first, then import
     print("Checking for uvicorn...", file=sys.stderr)
-    uvicorn_path = None
     try:
         import shutil
         uvicorn_path = shutil.which("uvicorn")
         if uvicorn_path:
             print(f"uvicorn found in PATH: {uvicorn_path}", file=sys.stderr)
-        else:
-            print("uvicorn not found in PATH, trying Python import...", file=sys.stderr)
-            import uvicorn
-            print(f"uvicorn found as Python module: {uvicorn.__file__}", file=sys.stderr)
+    except Exception:
+        pass  # shutil might not be available, but that's okay
+    
+    # Always import uvicorn module (required for uvicorn.run())
+    try:
+        import uvicorn
+        print(f"uvicorn module imported: {uvicorn.__file__}", file=sys.stderr)
     except ImportError:
-        print("ERROR: uvicorn not found. Trying to import from .local", file=sys.stderr)
+        print("ERROR: uvicorn module not found. Trying to import from .local", file=sys.stderr)
         # Try adding .local/bin to path
         local_bin = os.path.expanduser("~/.local/bin")
         if local_bin not in os.environ.get("PATH", ""):
