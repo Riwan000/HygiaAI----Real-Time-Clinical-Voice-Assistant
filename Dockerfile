@@ -59,9 +59,10 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 # Expose port (Railway will override with $PORT)
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+# Health check (Railway will use its own healthcheckPath, but this is for Docker)
+# Increased start-period to allow app to fully initialize (PyTorch/transformers can take time)
+HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application (Railway provides $PORT)
 # Use shell form to expand PORT variable
