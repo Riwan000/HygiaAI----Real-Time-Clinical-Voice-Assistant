@@ -44,6 +44,29 @@ def main():
             print("PATH:", os.environ.get("PATH", ""), file=sys.stderr)
             sys.exit(1)
     
+    # Verify python-multipart is installed (required for FastAPI form data)
+    print("Checking for python-multipart...", file=sys.stderr)
+    try:
+        import multipart
+        print(f"python-multipart found: {multipart.__file__}", file=sys.stderr)
+    except ImportError:
+        print("WARNING: python-multipart not found. FastAPI form data may fail.", file=sys.stderr)
+        print("Attempting to install python-multipart...", file=sys.stderr)
+        try:
+            import subprocess
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--user", "python-multipart>=0.0.6"],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            if result.returncode == 0:
+                print("python-multipart installed successfully", file=sys.stderr)
+            else:
+                print(f"Failed to install python-multipart: {result.stderr}", file=sys.stderr)
+        except Exception as install_error:
+            print(f"Error installing python-multipart: {install_error}", file=sys.stderr)
+    
     # Verify the app module can be imported
     print("Verifying app module can be imported...", file=sys.stderr)
     try:

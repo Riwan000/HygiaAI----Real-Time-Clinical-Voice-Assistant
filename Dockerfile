@@ -46,12 +46,22 @@ RUN pip install --no-cache-dir --user \
     --retries=5 \
     transformers==4.34.0 sentence-transformers>=2.2.0
 
-# Install other dependencies with timeout (split into batches for better caching)
-# python-multipart is required for FastAPI form data and file uploads
+# Install FastAPI core dependencies first
 RUN pip install --no-cache-dir --user \
     --default-timeout=300 \
     --retries=3 \
-    fastapi>=0.104.0 uvicorn[standard]>=0.24.0 pydantic>=2.0.0 python-multipart>=0.0.6
+    fastapi>=0.104.0 uvicorn[standard]>=0.24.0 pydantic>=2.0.0
+
+# Install python-multipart separately to ensure it's available
+# This is REQUIRED for FastAPI form data and file uploads (Form(), File(), UploadFile)
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    python-multipart>=0.0.6
+
+# Verify python-multipart is installed
+RUN python -c "import multipart; print(f'python-multipart installed: {multipart.__file__}')" || \
+    (echo "ERROR: python-multipart installation failed" && exit 1)
 
 RUN pip install --no-cache-dir --user \
     --default-timeout=300 \
@@ -95,6 +105,11 @@ COPY --from=builder /root/.local /root/.local
 # Make sure scripts in .local are usable - CRITICAL for Railway
 # This ensures uvicorn and other pip --user installed scripts are found
 ENV PATH="/root/.local/bin:${PATH}"
+
+# Verify python-multipart is available in runtime stage
+RUN python -c "import multipart; print(f'python-multipart verified in runtime: {multipart.__file__}')" || \
+    (echo "WARNING: python-multipart not found in runtime stage, will attempt install at startup" && \
+     pip install --user python-multipart>=0.0.6)
 
 # Copy only necessary application files
 COPY src/ ./src/
