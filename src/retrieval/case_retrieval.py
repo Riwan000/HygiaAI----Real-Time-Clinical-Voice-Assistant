@@ -11,8 +11,40 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from src.storage import QdrantStorage
-from src.embeddings import BioBERTEmbeddingGenerator, CLIPEmbeddingGenerator, MultimodalEmbeddingGenerator
 from src.models import Case, CaseMetadata
+
+# Lazy import embeddings to avoid blocking if transformers/torch have version issues
+# Use TYPE_CHECKING for type hints to avoid runtime imports
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.embeddings import BioBERTEmbeddingGenerator, CLIPEmbeddingGenerator, MultimodalEmbeddingGenerator
+else:
+    # Runtime: use lazy imports
+    BioBERTEmbeddingGenerator = None
+    CLIPEmbeddingGenerator = None
+    MultimodalEmbeddingGenerator = None
+
+def _get_biobert_embedding_generator():
+    """Lazy import BioBERTEmbeddingGenerator"""
+    global BioBERTEmbeddingGenerator
+    if BioBERTEmbeddingGenerator is None:
+        from src.embeddings import BioBERTEmbeddingGenerator
+    return BioBERTEmbeddingGenerator
+
+def _get_clip_embedding_generator():
+    """Lazy import CLIPEmbeddingGenerator"""
+    global CLIPEmbeddingGenerator
+    if CLIPEmbeddingGenerator is None:
+        from src.embeddings import CLIPEmbeddingGenerator
+    return CLIPEmbeddingGenerator
+
+def _get_multimodal_embedding_generator():
+    """Lazy import MultimodalEmbeddingGenerator"""
+    global MultimodalEmbeddingGenerator
+    if MultimodalEmbeddingGenerator is None:
+        from src.embeddings import MultimodalEmbeddingGenerator
+    return MultimodalEmbeddingGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -164,9 +196,10 @@ class CaseRetriever:
             multimodal_embedding_generator: Optional multimodal embedding generator
         """
         self.storage = qdrant_storage
-        self.text_embedding_generator = text_embedding_generator or BioBERTEmbeddingGenerator()
-        self.image_embedding_generator = image_embedding_generator or CLIPEmbeddingGenerator()
-        self.multimodal_embedding_generator = multimodal_embedding_generator or MultimodalEmbeddingGenerator()
+        # Use lazy imports to avoid blocking startup if transformers/torch have issues
+        self.text_embedding_generator = text_embedding_generator or _get_biobert_embedding_generator()()
+        self.image_embedding_generator = image_embedding_generator or _get_clip_embedding_generator()()
+        self.multimodal_embedding_generator = multimodal_embedding_generator or _get_multimodal_embedding_generator()()
         
         logger.info("Case retriever initialized")
     
