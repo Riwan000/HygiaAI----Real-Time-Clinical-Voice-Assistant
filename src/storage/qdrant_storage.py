@@ -64,6 +64,8 @@ class QdrantStorage:
         self,
         host: Optional[str] = None,
         port: Optional[int] = None,
+        url: Optional[str] = None,
+        api_key: Optional[str] = None,
         collection_name: str = "hygiaai_transcripts",
         vector_size: int = 768,  # Default embedding size (BioBERT = 768)
         encryption_key: Optional[str] = None,
@@ -74,8 +76,10 @@ class QdrantStorage:
         Initialize Qdrant storage
         
         Args:
-            host: Qdrant host (default: localhost)
-            port: Qdrant port (default: 6333)
+            host: Qdrant host (default: localhost) - used if url is not provided
+            port: Qdrant port (default: 6333) - used if url is not provided
+            url: Qdrant Cloud URL (e.g., "https://xxx.cloud.qdrant.io:6333") - takes precedence over host/port
+            api_key: Optional Qdrant API key for authentication (required for cloud)
             collection_name: Name of the collection
             vector_size: Size of embedding vectors
             encryption_key: Optional encryption key
@@ -87,13 +91,30 @@ class QdrantStorage:
                 "Qdrant client not available. Install with: pip install qdrant-client"
             )
         
+        # Prefer URL (for cloud) over host/port (for local)
+        self.url = url or os.getenv("QDRANT_URL")
         self.host = host or os.getenv("QDRANT_HOST", "localhost")
         self.port = port or int(os.getenv("QDRANT_PORT", "6333"))
+        self.api_key = api_key or os.getenv("QDRANT_API_KEY")
         self.collection_name = collection_name
         self.vector_size = vector_size
         
         # Initialize Qdrant client
-        self.client = QdrantClient(host=self.host, port=self.port)
+        # Use URL for cloud, host/port for local
+        client_kwargs = {}
+        if self.url:
+            # Cloud connection with URL
+            client_kwargs["url"] = self.url
+            if self.api_key:
+                client_kwargs["api_key"] = self.api_key
+        else:
+            # Local connection with host/port
+            client_kwargs["host"] = self.host
+            client_kwargs["port"] = self.port
+            if self.api_key:
+                client_kwargs["api_key"] = self.api_key
+        
+        self.client = QdrantClient(**client_kwargs)
         
         # Initialize encryption and de-identification
         self.encryption_manager = EncryptionManager(encryption_key) if enable_encryption else None
@@ -104,7 +125,10 @@ class QdrantStorage:
         # Create collection if it doesn't exist
         self._ensure_collection()
         
-        logger.info(f"Qdrant storage initialized: {self.host}:{self.port}/{self.collection_name}")
+        if self.url:
+            logger.info(f"Qdrant storage initialized (Cloud): {self.url}/{self.collection_name}")
+        else:
+            logger.info(f"Qdrant storage initialized (Local): {self.host}:{self.port}/{self.collection_name}")
     
     def _ensure_collection(self):
         """Ensure collection exists, create if it doesn't"""

@@ -50,6 +50,23 @@ export type IngestResponse = {
   }>;
   soap_generated: boolean;
   message: string;
+  rag_suggestions?: {
+    differential_diagnoses?: Array<{ diagnosis: string; confidence: string | number }>;
+    recommendations?: Array<{
+      type: string;
+      title: string;
+      description: string;
+      confidence: number;
+      priority: string;
+      citations?: string[];
+    }>;
+    summary?: string;
+    confidence_score?: number;
+    reasoning_chain?: string[];
+    citations?: string[];
+    error?: string;
+    message?: string;
+  };
 };
 
 // SOAP Note
@@ -388,6 +405,11 @@ export class ClinicalMemoryService {
         limit: request.limit || 100,
         score_threshold: request.score_threshold ?? 0.0,
       },
+      timeout: 60000, // 60 seconds timeout for knowledge base searches
+      retry: {
+        attempts: 2,
+        delay: 1000,
+      },
     });
   }
 
@@ -408,6 +430,52 @@ export class ClinicalMemoryService {
     return apiRequest({
       method: 'GET',
       url: API_ENDPOINTS.CLINICAL_MEMORY.KNOWLEDGE_SOURCES,
+    });
+  }
+
+  /**
+   * Upload a file to knowledge base
+   */
+  static async uploadKnowledgeFile(
+    file: File,
+    options?: {
+      domain?: string;
+      source?: string;
+      year?: number;
+      author?: string;
+    }
+  ): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+    document_id: string;
+    chunks_created: number;
+    title: string;
+    domain: string;
+    source: string;
+  }>> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options?.domain) formData.append('domain', options.domain);
+    if (options?.source) formData.append('source', options.source);
+    if (options?.year) formData.append('year', options.year.toString());
+    if (options?.author) formData.append('author', options.author);
+
+    // Calculate timeout based on file size (minimum 5 minutes, +1 minute per 10MB)
+    const fileSizeMB = file.size / (1024 * 1024);
+    const timeoutMs = Math.max(300000, 300000 + (fileSizeMB / 10) * 60000); // 5 min base + 1 min per 10MB
+
+    return apiRequest({
+      method: 'POST',
+      url: `${API_BASE_URL}/api/v1/clinical_memory/knowledge/upload`,
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: timeoutMs,
+      retry: {
+        attempts: 1,
+        delay: 2000,
+      },
     });
   }
 

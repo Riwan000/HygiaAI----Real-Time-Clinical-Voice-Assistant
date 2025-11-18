@@ -20,7 +20,7 @@ HygiaAI consists of three main components:
 - Qdrant Cloud account (free tier available) OR Docker hosting
 - API Keys:
   - Deepgram API key ([Get here](https://console.deepgram.com))
-  - Optional: OpenAI/Anthropic/OpenRouter API keys
+  - Optional: Google Gemini API key ([Get here](https://makersuite.google.com/app/apikey))
 
 ---
 
@@ -276,9 +276,7 @@ DEEPGRAM_API_KEY=your_deepgram_key
 QDRANT_HOST=your-cluster.qdrant.io
 QDRANT_PORT=6333
 QDRANT_API_KEY=your_qdrant_api_key
-OPENAI_API_KEY=your_openai_key (optional)
-ANTHROPIC_API_KEY=your_anthropic_key (optional)
-OPENROUTER_API_KEY=your_openrouter_key (optional)
+GOOGLE_API_KEY=your_google_api_key (optional - for LLM features)
 PORT=8000
 ```
 

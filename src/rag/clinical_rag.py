@@ -18,28 +18,18 @@ from src.models import Case, CaseMetadata
 
 logger = logging.getLogger(__name__)
 
-# LLM Provider Support
+# LLM Provider Support - Google Gemini
 try:
-    import openai
-    OPENAI_AVAILABLE = True
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
-    logger.warning("OpenAI library not available. Install with: pip install openai")
-
-try:
-    from anthropic import Anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
-    logger.warning("Anthropic library not available. Install with: pip install anthropic")
+    GEMINI_AVAILABLE = False
+    logger.warning("Google Generative AI library not available. Install with: pip install google-generativeai")
 
 
 class LLMProvider(Enum):
     """Supported LLM providers"""
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    OPENROUTER = "openrouter"
-    OLLAMA = "ollama"
+    GEMINI = "gemini"
 
 
 @dataclass
@@ -92,8 +82,8 @@ class RAGOptions:
     retrieval_filters: Optional[Dict[str, Any]] = None
     
     # LLM options
-    llm_provider: LLMProvider = LLMProvider.OPENAI
-    llm_model: str = "gpt-4"  # or "claude-3-opus", etc.
+    llm_provider: LLMProvider = LLMProvider.GEMINI
+    llm_model: str = "gemini-2.5-flash"  # Fast and cost-effective. Alternatives: "gemini-2.5-pro-preview-03-25", "gemini-1.5-pro"
     temperature: float = 0.3  # Lower for more deterministic medical responses
     max_tokens: int = 2000
     
@@ -125,99 +115,51 @@ class ClinicalRAG:
     def __init__(
         self,
         case_retriever: CaseRetriever,
-        llm_provider: LLMProvider = LLMProvider.OPENAI,
-        llm_model: str = "gpt-4",
-        api_key: Optional[str] = None,
-        fallback_to_ollama: bool = True,
-        ollama_model: str = "llama3.1:latest"
+        llm_provider: LLMProvider = LLMProvider.GEMINI,
+        llm_model: str = "gemini-2.5-flash",
+        api_key: Optional[str] = None
     ):
         """
         Initialize clinical RAG system
         
         Args:
             case_retriever: CaseRetriever instance for retrieving similar cases
-            llm_provider: LLM provider to use
-            llm_model: Model name/ID
-            api_key: Optional API key (if not provided, uses environment variable)
-            fallback_to_ollama: Whether to fallback to Ollama if primary provider fails
-            ollama_model: Ollama model to use as fallback (default: llama3.1:latest)
+            llm_provider: LLM provider to use (currently only GEMINI supported)
+            llm_model: Gemini model name (e.g., "gemini-2.5-flash", "gemini-2.5-pro-preview-03-25", "gemini-1.5-pro")
+            api_key: Optional API key (if not provided, uses GOOGLE_API_KEY environment variable)
         """
         self.case_retriever = case_retriever
         self.llm_provider = llm_provider
         self.llm_model = llm_model
         self.api_key = api_key or self._get_api_key()
-        self.fallback_to_ollama = fallback_to_ollama
-        self.ollama_model = ollama_model
         
-        # Initialize primary LLM client
+        # Initialize Gemini client
         self.llm_client = self._initialize_llm_client()
-        
-        # Initialize Ollama fallback client if fallback is enabled
-        self.ollama_client = None
-        if self.fallback_to_ollama:
-            try:
-                self.ollama_client = self._initialize_ollama_client()
-                logger.info(f"Ollama fallback initialized ({ollama_model})")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Ollama fallback: {e}")
         
         logger.info(f"Clinical RAG initialized with {llm_provider.value} ({llm_model})")
     
     def _get_api_key(self) -> Optional[str]:
         """Get API key from environment"""
-        if self.llm_provider == LLMProvider.OPENAI:
-            return os.getenv("OPENAI_API_KEY")
-        elif self.llm_provider == LLMProvider.ANTHROPIC:
-            return os.getenv("ANTHROPIC_API_KEY")
-        elif self.llm_provider == LLMProvider.OPENROUTER:
-            return os.getenv("OPENROUTER_API_KEY")
-        elif self.llm_provider == LLMProvider.OLLAMA:
-            return os.getenv("OLLAMA_API_KEY")  # Usually not needed for local
+        if self.llm_provider == LLMProvider.GEMINI:
+            return os.getenv("GOOGLE_API_KEY")
         return None
     
     def _initialize_llm_client(self):
-        """Initialize LLM client based on provider"""
-        if self.llm_provider == LLMProvider.OPENAI:
-            if not OPENAI_AVAILABLE:
-                raise ImportError("OpenAI library required. Install with: pip install openai")
-            if not self.api_key:
-                raise ValueError("OPENAI_API_KEY environment variable required")
-            return openai.OpenAI(api_key=self.api_key)
-        elif self.llm_provider == LLMProvider.ANTHROPIC:
-            if not ANTHROPIC_AVAILABLE:
-                raise ImportError("Anthropic library required. Install with: pip install anthropic")
-            if not self.api_key:
-                raise ValueError("ANTHROPIC_API_KEY environment variable required")
-            return Anthropic(api_key=self.api_key)
-        elif self.llm_provider == LLMProvider.OPENROUTER:
-            if not OPENAI_AVAILABLE:
-                raise ImportError("OpenAI library required for OpenRouter. Install with: pip install openai")
-            if not self.api_key:
-                raise ValueError("OPENROUTER_API_KEY environment variable required")
-            return openai.OpenAI(
-                api_key=self.api_key,
-                base_url="https://openrouter.ai/api/v1"
-            )
-        elif self.llm_provider == LLMProvider.OLLAMA:
-            if not OPENAI_AVAILABLE:
-                raise ImportError("OpenAI library required for Ollama. Install with: pip install openai")
-            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-            return openai.OpenAI(
-                api_key="ollama",  # Ollama doesn't require a real key
-                base_url=base_url
-            )
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
-    
-    def _initialize_ollama_client(self):
-        """Initialize Ollama client for fallback"""
-        if not OPENAI_AVAILABLE:
-            raise ImportError("OpenAI library required for Ollama. Install with: pip install openai")
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        return openai.OpenAI(
-            api_key="ollama",  # Ollama doesn't require a real key
-            base_url=base_url
-        )
+        """Initialize Gemini client"""
+        if self.llm_provider != LLMProvider.GEMINI:
+            raise ValueError(f"Only Gemini provider is supported. Got: {self.llm_provider}")
+        
+        if not GEMINI_AVAILABLE:
+            raise ImportError("Google Generative AI library required. Install with: pip install google-generativeai")
+        
+        if not self.api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable required")
+        
+        # Configure Gemini API
+        genai.configure(api_key=self.api_key)
+        
+        # Return the model instance
+        return genai.GenerativeModel(self.llm_model)
     
     def generate_insights(
         self,
@@ -276,17 +218,9 @@ class ClinicalRAG:
                 options=options
             )
             
-            # Step 4: Call LLM (with fallback to Ollama if enabled)
+            # Step 4: Call LLM
             logger.info(f"Calling LLM ({self.llm_provider.value}/{self.llm_model})...")
-            try:
-                llm_response = self._call_llm(prompt, options)
-            except Exception as e:
-                logger.warning(f"Primary LLM call failed: {e}")
-                if self.fallback_to_ollama and self.ollama_client:
-                    logger.info(f"Falling back to Ollama ({self.ollama_model})...")
-                    llm_response = self._call_llm_with_fallback(prompt, options)
-                else:
-                    raise
+            llm_response = self._call_llm(prompt, options)
             
             # Step 5: Parse LLM response
             insight = self._parse_llm_response(
@@ -429,62 +363,38 @@ class ClinicalRAG:
         return "\n".join(prompt_parts)
     
     def _call_llm(self, prompt: str, options: RAGOptions) -> str:
-        """Call LLM API"""
+        """Call Gemini API"""
         try:
-            if self.llm_provider == LLMProvider.OPENAI or self.llm_provider == LLMProvider.OPENROUTER or self.llm_provider == LLMProvider.OLLAMA:
-                # OpenAI-compatible API
-                response = self.llm_client.chat.completions.create(
-                    model=self.llm_model,
-                    messages=[
-                        {"role": "system", "content": "You are a clinical decision support system."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=options.temperature,
-                    max_tokens=options.max_tokens,
-                    response_format={"type": "json_object"}  # Request JSON response
-                )
-                return response.choices[0].message.content
-                
-            elif self.llm_provider == LLMProvider.ANTHROPIC:
-                # Anthropic API
-                response = self.llm_client.messages.create(
-                    model=self.llm_model,
-                    max_tokens=options.max_tokens,
-                    temperature=options.temperature,
-                    system="You are a clinical decision support system. Always respond with valid JSON.",
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                return response.content[0].text
-            else:
-                raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
-                
-        except Exception as e:
-            logger.error(f"Error calling LLM: {e}")
-            raise
-    
-    def _call_llm_with_fallback(self, prompt: str, options: RAGOptions) -> str:
-        """Call Ollama as fallback LLM"""
-        if not self.ollama_client:
-            raise RuntimeError("Ollama fallback client not initialized")
-        
-        try:
-            logger.info(f"Calling Ollama fallback ({self.ollama_model})...")
-            response = self.ollama_client.chat.completions.create(
-                model=self.ollama_model,
-                messages=[
-                    {"role": "system", "content": "You are a clinical decision support system. Always respond with valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
+            if self.llm_provider != LLMProvider.GEMINI:
+                raise ValueError(f"Only Gemini provider is supported. Got: {self.llm_provider}")
+            
+            # Build the full prompt with system instructions
+            full_prompt = f"""You are a clinical decision support system. Always respond with valid JSON.
+
+{prompt}"""
+
+            # Configure generation parameters
+            from google.generativeai import types
+            generation_config = types.GenerationConfig(
                 temperature=options.temperature,
-                max_tokens=options.max_tokens,
-                response_format={"type": "json_object"}  # Request JSON response
+                max_output_tokens=options.max_tokens,
+                response_mime_type="application/json"  # Request JSON response
             )
-            logger.info("Ollama fallback call successful")
-            return response.choices[0].message.content
+            
+            # Generate content
+            response = self.llm_client.generate_content(
+                full_prompt,
+                generation_config=generation_config
+            )
+            
+            # Extract text from response
+            if response.text:
+                return response.text
+            else:
+                raise ValueError("Empty response from Gemini API")
+                
         except Exception as e:
-            logger.error(f"Error calling Ollama fallback: {e}")
+            logger.error(f"Error calling Gemini API: {e}")
             raise
     
     def _parse_llm_response(

@@ -85,8 +85,17 @@ const createAxiosInstance = (): AxiosInstance => {
     async (error: AxiosError) => {
       // Handle network errors
       if (!error.response) {
+        // More detailed error message
+        let errorMessage = 'Network error: Unable to connect to server';
+        if (error.code === 'ECONNREFUSED') {
+          errorMessage = 'Connection refused. Please ensure the backend server is running on http://localhost:8000';
+        } else if (error.code === 'ETIMEDOUT') {
+          errorMessage = 'Request timed out. The server may be slow or unresponsive.';
+        } else if (error.message) {
+          errorMessage = `Network error: ${error.message}`;
+        }
         throw new ApiError(
-          'Network error: Unable to connect to server',
+          errorMessage,
           0,
           null,
           error
@@ -242,26 +251,26 @@ export const apiRequest = async <T = any>(
       data: response.data,
       statusCode: response.status,
     };
-  } catch (error) {
+  } catch (error: any) {
     // Handle retry logic
-    if (config.retry && error instanceof AxiosError) {
+    if (config.retry && error && typeof error === 'object' && error.isAxiosError) {
       try {
-        const retryResponse = await retryRequest(axiosInstance, config, error, 1);
+        const retryResponse = await retryRequest(axiosInstance, config, error as AxiosError, 1);
         return {
           success: true,
           data: retryResponse.data,
           statusCode: retryResponse.status,
         };
-      } catch (retryError) {
+      } catch (retryError: any) {
         // If retry also fails, handle as normal error
         if (retryError instanceof ApiError) {
           throw retryError;
         }
-        if (retryError instanceof AxiosError) {
+        if (retryError && typeof retryError === 'object' && retryError.isAxiosError) {
           // Will be caught by interceptor
           throw retryError;
         }
-        throw new ApiError('Unknown error occurred', undefined, null, retryError as any);
+        throw new ApiError('Unknown error occurred', undefined, null, retryError);
       }
     }
 
@@ -271,17 +280,19 @@ export const apiRequest = async <T = any>(
     }
 
     // Convert AxiosError to ApiError (should be handled by interceptor, but just in case)
-    if (error instanceof AxiosError) {
+    if (error && typeof error === 'object' && error.isAxiosError) {
+      const axiosError = error as AxiosError;
       throw new ApiError(
-        error.message || 'Request failed',
-        error.response?.status,
-        error.response?.data,
-        error
+        axiosError.message || 'Request failed',
+        axiosError.response?.status,
+        axiosError.response?.data,
+        axiosError
       );
     }
 
-    // Unknown error
-    throw new ApiError('Unknown error occurred', undefined, null, error as any);
+    // Unknown error - convert to ApiError
+    const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+    throw new ApiError(errorMessage, undefined, null, error);
   }
 };
 

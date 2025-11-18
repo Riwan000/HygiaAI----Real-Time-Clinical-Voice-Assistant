@@ -11,6 +11,8 @@ import {
   XMarkIcon,
   BookOpenIcon,
   ArrowDownTrayIcon,
+  PlusIcon,
+  DocumentArrowUpIcon,
 } from '@heroicons/react/24/outline';
 import { KnowledgeCard } from './KnowledgeCard';
 import { Pagination } from './Pagination';
@@ -40,6 +42,11 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [showFilters, setShowFilters] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
   // Load available domains and sources, and all entries on mount
   useEffect(() => {
@@ -167,6 +174,72 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
   };
 
   /**
+   * Handle file upload
+   */
+  const handleFileUpload = async (file: File, domain?: string, source?: string, year?: number, author?: string) => {
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+    setUploadProgress(0);
+
+    try {
+      // Simulate progress (since we can't track actual upload progress easily)
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      const response = await ClinicalMemoryService.uploadKnowledgeFile(file, {
+        domain,
+        source,
+        year,
+        author,
+      });
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (response.success && response.data) {
+        setUploadSuccess(`Successfully uploaded "${response.data.title}". Created ${response.data.chunks_created} chunks.`);
+        setShowUploadModal(false);
+        
+        // Refresh the knowledge base
+        setTimeout(() => {
+          handleSearch(1);
+        }, 1000);
+      } else {
+        setUploadError(response.error || 'Failed to upload file');
+      }
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      // Extract error message from ApiError or other error types
+      let errorMessage = 'Failed to upload file';
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err?.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      setUploadError(errorMessage);
+    } finally {
+      setUploading(false);
+      setTimeout(() => {
+        setUploadProgress(0);
+        setUploadError(null);
+        setUploadSuccess(null);
+      }, 5000);
+    }
+  };
+
+  /**
    * Get paginated entries
    */
   const paginatedEntries = entries.slice(
@@ -226,6 +299,15 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
           >
             <FunnelIcon className="h-5 w-5" aria-hidden="true" />
             <span>Filters</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowUploadModal(true)}
+            className="px-4 py-3 bg-green-600 dark:bg-green-500 text-white rounded-lg hover:bg-green-700 dark:hover:bg-green-600 transition-colors flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            aria-label="Upload file to knowledge base"
+          >
+            <PlusIcon className="h-5 w-5" aria-hidden="true" />
+            <span>Upload File</span>
           </button>
         </div>
 
@@ -455,7 +537,240 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
           </p>
         </div>
       )}
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50" onClick={() => !uploading && setShowUploadModal(false)}>
+          <div className="bg-white dark:bg-[#1E293B] rounded-lg p-6 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-[#1E3A8A] dark:text-white">Upload File to Knowledge Base</h3>
+              <button
+                type="button"
+                onClick={() => !uploading && setShowUploadModal(false)}
+                className="text-[#64748B] dark:text-[#94A3B8] hover:text-[#1E3A8A] dark:hover:text-white"
+                disabled={uploading}
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <FileUploadForm
+              onUpload={handleFileUpload}
+              uploading={uploading}
+              uploadProgress={uploadProgress}
+              error={uploadError}
+              success={uploadSuccess}
+              availableDomains={availableDomains}
+              onClose={() => setShowUploadModal(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * File Upload Form Component
+ */
+interface FileUploadFormProps {
+  onUpload: (file: File, domain?: string, source?: string, year?: number, author?: string) => Promise<void>;
+  uploading: boolean;
+  uploadProgress: number;
+  error: string | null;
+  success: string | null;
+  availableDomains: string[];
+  onClose: () => void;
+}
+
+function FileUploadForm({
+  onUpload,
+  uploading,
+  uploadProgress,
+  error,
+  success,
+  availableDomains,
+  onClose,
+}: FileUploadFormProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [domain, setDomain] = useState('');
+  const [source, setSource] = useState('');
+  const [year, setYear] = useState<number | undefined>(undefined);
+  const [author, setAuthor] = useState('');
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      const allowedTypes = ['.pdf', '.docx', '.doc', '.txt', '.md'];
+      const fileExt = selectedFile.name.toLowerCase().substring(selectedFile.name.lastIndexOf('.'));
+      
+      if (!allowedTypes.includes(fileExt)) {
+        alert(`Unsupported file type. Allowed: ${allowedTypes.join(', ')}`);
+        return;
+      }
+      
+      setFile(selectedFile);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file) {
+      alert('Please select a file');
+      return;
+    }
+    await onUpload(file, domain || undefined, source || undefined, year, author || undefined);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* File Input */}
+      <div>
+        <label htmlFor="file-upload" className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
+          Select File (PDF, DOCX, TXT, MD)
+        </label>
+        <div className="flex items-center space-x-4">
+          <label
+            htmlFor="file-upload"
+            className="flex-1 cursor-pointer px-4 py-3 border-2 border-dashed border-[#64748B] dark:border-[#475569] rounded-lg hover:border-[#2563EB] dark:hover:border-[#3B82F6] transition-colors flex items-center justify-center space-x-2"
+          >
+            <DocumentArrowUpIcon className="h-5 w-5 text-[#64748B] dark:text-[#94A3B8]" />
+            <span className="text-sm text-[#64748B] dark:text-[#94A3B8]">
+              {file ? file.name : 'Choose file...'}
+            </span>
+          </label>
+          <input
+            id="file-upload"
+            type="file"
+            accept=".pdf,.docx,.doc,.txt,.md"
+            onChange={handleFileChange}
+            className="hidden"
+            disabled={uploading}
+          />
+        </div>
+      </div>
+
+      {/* Domain */}
+      <div>
+        <label htmlFor="upload-domain" className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
+          Domain (Optional)
+        </label>
+        <select
+          id="upload-domain"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          className="w-full px-3 py-2 border border-slate/30 dark:border-[#475569]/30 rounded-lg bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+          disabled={uploading}
+        >
+          <option value="">Select domain...</option>
+          {availableDomains.map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+          <option value="clinical_reference">Clinical Reference</option>
+          <option value="guidelines">Guidelines</option>
+          <option value="research">Research</option>
+        </select>
+      </div>
+
+      {/* Source */}
+      <div>
+        <label htmlFor="upload-source" className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
+          Source (Optional)
+        </label>
+        <input
+          id="upload-source"
+          type="text"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          placeholder="e.g., Medical Journal, Textbook, etc."
+          className="w-full px-3 py-2 border border-slate/30 dark:border-[#475569]/30 rounded-lg bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+          disabled={uploading}
+        />
+      </div>
+
+      {/* Year & Author */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="upload-year" className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
+            Year (Optional)
+          </label>
+          <input
+            id="upload-year"
+            type="number"
+            value={year || ''}
+            onChange={(e) => setYear(e.target.value ? parseInt(e.target.value) : undefined)}
+            placeholder="2024"
+            min="1900"
+            max={new Date().getFullYear()}
+            className="w-full px-3 py-2 border border-slate/30 dark:border-[#475569]/30 rounded-lg bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+            disabled={uploading}
+          />
+        </div>
+        <div>
+          <label htmlFor="upload-author" className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
+            Author (Optional)
+          </label>
+          <input
+            id="upload-author"
+            type="text"
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+            placeholder="Author name"
+            className="w-full px-3 py-2 border border-slate/30 dark:border-[#475569]/30 rounded-lg bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+            disabled={uploading}
+          />
+        </div>
+      </div>
+
+      {/* Progress */}
+      {uploading && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-[#64748B] dark:text-[#94A3B8]">Uploading...</span>
+            <span className="text-sm text-[#64748B] dark:text-[#94A3B8]">{uploadProgress}%</span>
+          </div>
+          <div className="w-full bg-[#F8FAFC] dark:bg-[#334155] rounded-full h-2">
+            <div
+              className="bg-[#2563EB] dark:bg-[#3B82F6] h-2 rounded-full transition-all duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Success */}
+      {success && (
+        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <p className="text-sm text-green-800 dark:text-green-300">{success}</p>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center justify-end space-x-3 pt-4">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={uploading}
+          className="px-4 py-2 text-sm font-medium text-[#64748B] dark:text-[#94A3B8] hover:text-[#1E3A8A] dark:hover:text-white disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!file || uploading}
+          className="px-4 py-2 bg-[#2563EB] dark:bg-[#3B82F6] text-white rounded-lg hover:bg-[#1E3A8A] dark:hover:bg-[#2563EB] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {uploading ? 'Uploading...' : 'Upload'}
+        </button>
+      </div>
+    </form>
   );
 }
 

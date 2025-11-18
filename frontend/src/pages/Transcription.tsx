@@ -24,6 +24,8 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
+  ArrowUpTrayIcon,
+  DocumentArrowUpIcon,
 } from '@heroicons/react/24/outline';
 import { clsx } from '../utils/clsx';
 
@@ -47,6 +49,10 @@ export function Transcription() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [setupTested, setSetupTested] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isTranscribingFile, setIsTranscribingFile] = useState(false);
+  const [fileTranscriptionResult, setFileTranscriptionResult] = useState<TranscriptionResult | null>(null);
+  const [fileTranscriptionError, setFileTranscriptionError] = useState<string | null>(null);
 
   // Early return if service failed to initialize
   if (!transcriptionService) {
@@ -304,6 +310,69 @@ export function Transcription() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [status]);
 
+  const handleFileUpload = async (file: File) => {
+    setUploadedFile(file);
+    setIsTranscribingFile(true);
+    setFileTranscriptionError(null);
+    setFileTranscriptionResult(null);
+
+    try {
+      const response = await TranscriptionService.transcribeFile(file, {
+        language: 'en-US',
+        model: 'nova-2',
+        smart_format: true,
+        punctuate: true,
+        diarize: true,
+      });
+
+      if (response.success && response.data) {
+        // Convert file transcription result to TranscriptionResult format
+        const transcriptionResult: TranscriptionResult = {
+          transcript: response.data.transcript,
+          is_final: true,
+          words: response.data.words.map((w: any) => ({
+            word: w.word,
+            start: w.start,
+            end: w.end,
+            confidence: w.confidence,
+            speaker: w.speaker,
+          })),
+          confidence: response.data.confidence,
+          speaker: response.data.words[0]?.speaker,
+          timestamp: Date.now(),
+        };
+        setFileTranscriptionResult(transcriptionResult);
+        
+        // Add to results list for display
+        setResults((prev) => [...prev, transcriptionResult]);
+        setWordCount((prev) => prev + transcriptionResult.transcript.split(/\s+/).length);
+      } else {
+        setFileTranscriptionError(response.error || 'Failed to transcribe file');
+      }
+    } catch (err: any) {
+      console.error('Error transcribing file:', err);
+      setFileTranscriptionError(err?.message || 'Failed to transcribe file');
+    } finally {
+      setIsTranscribingFile(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const allowedTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/webm', 'audio/m4a', 'audio/flac', 'audio/ogg', 'audio/opus'];
+      const allowedExtensions = ['.wav', '.mp3', '.mpeg', '.webm', '.m4a', '.flac', '.ogg', '.opus', '.mp4'];
+      const fileExt = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+      
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExt)) {
+        setError(`Unsupported audio format. Allowed: ${allowedExtensions.join(', ')}`);
+        return;
+      }
+      
+      handleFileUpload(file);
+    }
+  };
+
   return (
     <div>
       <Breadcrumbs items={[{ name: 'Live Transcription' }]} />
@@ -336,6 +405,60 @@ export function Transcription() {
       </div>
 
       <div className="space-y-6">
+        {/* File Upload Section */}
+        <div className="bg-white dark:bg-[#1E293B] rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <h2 className="text-xl font-semibold text-[#1E3A8A] dark:text-white mb-4">
+            Upload Audio File
+          </h2>
+          <div className="flex items-center space-x-4">
+            <label
+              htmlFor="audio-file-upload"
+              className="flex-1 cursor-pointer px-6 py-4 border-2 border-dashed border-[#64748B] dark:border-[#475569] rounded-lg hover:border-[#2563EB] dark:hover:border-[#3B82F6] transition-colors flex items-center justify-center space-x-2"
+            >
+              <DocumentArrowUpIcon className="h-6 w-6 text-[#64748B] dark:text-[#94A3B8]" />
+              <span className="text-sm font-medium text-[#64748B] dark:text-[#94A3B8]">
+                {uploadedFile ? uploadedFile.name : 'Choose audio file (WAV, MP3, WEBM, etc.)'}
+              </span>
+            </label>
+            <input
+              id="audio-file-upload"
+              type="file"
+              accept="audio/*,.wav,.mp3,.mpeg,.webm,.m4a,.flac,.ogg,.opus"
+              onChange={handleFileSelect}
+              className="hidden"
+              disabled={isTranscribingFile || status === 'transcribing'}
+            />
+          </div>
+          
+          {isTranscribingFile && (
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  Transcribing audio file... This may take a moment.
+                </p>
+              </div>
+            </div>
+          )}
+          
+          {fileTranscriptionError && (
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-800 dark:text-red-200">{fileTranscriptionError}</p>
+            </div>
+          )}
+          
+          {fileTranscriptionResult && (
+            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <CheckCircleIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <p className="text-sm text-green-800 dark:text-green-200">
+                  File transcribed successfully! ({Math.round(fileTranscriptionResult.confidence * 100)}% confidence)
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Status and Controls */}
         <div className="bg-white dark:bg-[#1E293B] rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between mb-4">

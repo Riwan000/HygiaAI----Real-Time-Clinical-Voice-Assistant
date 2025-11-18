@@ -4,7 +4,9 @@
  * Handles real-time audio transcription using Deepgram WebSocket API
  */
 
-import { DEEPGRAM_API_KEY, TRANSCRIPTION_CONFIG } from '../utils/constants';
+import { DEEPGRAM_API_KEY, TRANSCRIPTION_CONFIG, API_BASE_URL } from '../utils/constants';
+import { apiRequest } from './api';
+import type { ApiResponse } from './api';
 
 export interface TranscriptionWord {
   word: string;
@@ -488,6 +490,57 @@ export class TranscriptionService {
   getWordCount(): number {
     const fullText = this.getFullTranscript();
     return fullText.trim().split(/\s+/).filter((word) => word.length > 0).length;
+  }
+
+  /**
+   * Transcribe an uploaded audio file
+   */
+  static async transcribeFile(
+    file: File,
+    options?: {
+      language?: string;
+      model?: string;
+      smart_format?: boolean;
+      punctuate?: boolean;
+      diarize?: boolean;
+    }
+  ): Promise<ApiResponse<{
+    success: boolean;
+    transcript: string;
+    words: TranscriptionWord[];
+    confidence: number;
+    duration: number;
+    language?: string;
+    model?: string;
+    error?: string;
+  }>> {
+    const formData = new FormData();
+    formData.append('audio_file', file);
+    if (options?.language) formData.append('language', options.language);
+    if (options?.model) formData.append('model', options.model);
+    if (options?.smart_format !== undefined) formData.append('smart_format', String(options.smart_format));
+    if (options?.punctuate !== undefined) formData.append('punctuate', String(options.punctuate));
+    if (options?.diarize !== undefined) formData.append('diarize', String(options.diarize));
+
+    // Calculate timeout based on file size
+    // Audio transcription: base 2 minutes + 1 minute per 10MB
+    // For a 50MB audio file: 2 min + 5 min = 7 minutes
+    const fileSizeMB = file.size / (1024 * 1024);
+    const timeoutMs = Math.max(120000, 120000 + (fileSizeMB / 10) * 60000); // 2 min base + 1 min per 10MB
+
+    return apiRequest({
+      method: 'POST',
+      url: `${API_BASE_URL}/api/v1/transcription/file`,
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: timeoutMs,
+      retry: {
+        attempts: 1,
+        delay: 2000,
+      },
+    });
   }
 }
 

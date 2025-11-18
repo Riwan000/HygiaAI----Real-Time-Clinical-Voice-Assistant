@@ -258,17 +258,14 @@ def main():
     print_section("Step 6: RAG-Based Clinical Insights")
     
     try:
-        # Check if we have LLM API keys
-        has_openai = os.getenv("OPENAI_API_KEY")
-        has_anthropic = os.getenv("ANTHROPIC_API_KEY")
+        # Check if we have Gemini API key
+        has_gemini = os.getenv("GOOGLE_API_KEY")
         
-        if has_openai or has_anthropic:
+        if has_gemini:
             rag = ClinicalRAG(
                 case_retriever=retriever,
-                llm_provider=LLMProvider.OPENAI if has_openai else LLMProvider.ANTHROPIC,
-                llm_model="gpt-4" if has_openai else "claude-3-opus",
-                fallback_to_ollama=True,
-                ollama_model="llama3.1:latest"
+                llm_provider=LLMProvider.GEMINI,
+                llm_model="gemini-2.5-flash"
             )
             
             rag_options = RAGOptions(
@@ -301,14 +298,16 @@ def main():
             print(f"\n  Overall Confidence: {insight.confidence_score:.2f}")
             
         else:
-            print("⚠ LLM API keys not found (OPENAI_API_KEY or ANTHROPIC_API_KEY)")
+            print("⚠ Gemini API key not found (GOOGLE_API_KEY)")
             print("  Skipping RAG insights generation")
-            print("  Set API keys in .env file to enable this feature")
+            print("  Set GOOGLE_API_KEY in .env file to enable this feature")
+            print("  Get your API key at: https://makersuite.google.com/app/apikey")
             
     except Exception as e:
-        print(f"⚠ RAG insights generation requires LLM API")
+        print(f"⚠ RAG insights generation requires Gemini API")
         print(f"  Error: {e}")
-        print("  Set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env file")
+        print("  Set GOOGLE_API_KEY in .env file")
+        print("  Get your API key at: https://makersuite.google.com/app/apikey")
     
     # Step 7: Visualization Data
     print_section("Step 7: Visualization Data")
@@ -438,14 +437,15 @@ def main():
         print("\n⚠ Case Retrieval: Requires Qdrant storage")
         print("⚠ Visualization: Requires Qdrant storage")
     
-    has_llm = 'has_openai' in locals() and (has_openai or has_anthropic)
+    has_llm = 'has_gemini' in locals() and has_gemini
     if has_llm:
         print("\n✓ RAG Insights: Complete")
         print("  - Clinical insights generated with differential diagnoses")
         print("  - Recommendations provided with citations")
     else:
-        print("\n⚠ RAG Insights: Requires LLM API key")
-        print("  Set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env file")
+        print("\n⚠ RAG Insights: Requires Gemini API key")
+        print("  Set GOOGLE_API_KEY in .env file")
+        print("  Get your API key at: https://makersuite.google.com/app/apikey")
         print("  Or use Ollama fallback (configured automatically)")
     
     print("\n" + "=" * 80)

@@ -26,7 +26,11 @@ from ..entity_extraction.soap_generator import SOAPGenerator
 from ..retrieval.case_retrieval import CaseRetriever, RetrievalMode
 from ..rag.clinical_rag import ClinicalRAG
 from ..storage.qdrant_storage import QdrantStorage
+from ..storage.knowledge_ingestion import KnowledgeIngestionPipeline
+from ..embeddings import BioBERTEmbeddingGenerator
+from ..utils.file_processor import FileProcessor
 from ..models.case_models import Case, CaseModality, CaseMetadata
+from ..storage.schema import KnowledgeBaseMetadata, EmbeddingType, AccessType
 from ..knowledge_intelligence import (
     TemporalClusteringService,
     RegionalHealthAnalytics,
@@ -54,12 +58,23 @@ def get_qdrant_storage() -> QdrantStorage:
     """Get or create Qdrant storage instance"""
     global _qdrant_storage
     if _qdrant_storage is None:
-        _qdrant_storage = QdrantStorage(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", "6334")),
-            collection_name="hygiaai_cases",
-            vector_size=768
-        )
+        # Use URL if provided (for cloud), otherwise use host/port (for local)
+        qdrant_url = os.getenv("QDRANT_URL")
+        if qdrant_url:
+            _qdrant_storage = QdrantStorage(
+                url=qdrant_url,
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_cases",
+                vector_size=768
+            )
+        else:
+            _qdrant_storage = QdrantStorage(
+                host=os.getenv("QDRANT_HOST", "localhost"),
+                port=int(os.getenv("QDRANT_PORT", "6334")),
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_cases",
+                vector_size=768
+            )
     return _qdrant_storage
 
 
@@ -149,6 +164,7 @@ class IngestResponse(BaseModel):
     modalities_processed: List[Dict[str, Any]]
     soap_generated: bool
     message: str
+    rag_suggestions: Optional[Dict[str, Any]] = Field(None, description="RAG-based clinical suggestions and insights")
 
 
 class SOAPRequest(BaseModel):
@@ -320,13 +336,73 @@ async def ingest_multimodal(
         # Ingest case
         result = ingestion.ingest_case(case, generate_soap=True)
         
+        # Generate RAG-based suggestions if ingestion was successful
+        rag_suggestions = None
+        if result["status"] == "success":
+            try:
+                # Extract text from case for RAG query
+                query_text = ""
+                if transcript_text:
+                    query_text = transcript_text
+                elif text_file:
+                    # Re-read text file content
+                    text_content = await text_file.read()
+                    query_text = text_content.decode("utf-8")
+                elif "text" in modalities:
+                    query_text = modalities["text"].content.get("transcript", "")
+                
+                # Also include metadata in query for better context
+                if query_text:
+                    # Build enriched query text
+                    enriched_query = query_text
+                    if diagnosis:
+                        enriched_query += f"\n\nDiagnosis: {diagnosis}"
+                    if comorbidities_list:
+                        enriched_query += f"\n\nComorbidities: {', '.join(comorbidities_list)}"
+                    if age_group:
+                        enriched_query += f"\n\nAge Group: {age_group}"
+                    
+                    # Generate RAG insights
+                    logger.info(f"Generating RAG-based suggestions for case {case.case_id}...")
+                    rag = get_clinical_rag()
+                    
+                    from ..rag.clinical_rag import RAGOptions
+                    rag_options = RAGOptions(
+                        retrieval_limit=5,
+                        include_knowledge_base=True,  # Include knowledge base in retrieval
+                        generate_differential_diagnoses=True,
+                        generate_recommendations=True,
+                        generate_summary=True,
+                        temperature=0.3
+                    )
+                    
+                    insight = rag.generate_insights(
+                        query_text=enriched_query,
+                        query_case=case,
+                        options=rag_options
+                    )
+                    
+                    # Convert insight to dictionary for response
+                    rag_suggestions = insight.to_dict()
+                    logger.info(f"✓ RAG suggestions generated successfully")
+                    
+            except Exception as rag_error:
+                # Don't fail the entire request if RAG generation fails
+                logger.warning(f"Failed to generate RAG suggestions: {rag_error}")
+                logger.debug(f"RAG error details: {rag_error}", exc_info=True)
+                rag_suggestions = {
+                    "error": "Failed to generate suggestions",
+                    "message": str(rag_error)
+                }
+        
         return IngestResponse(
             status=result["status"],
             case_id=result["case_id"],
             point_ids=result["point_ids"],
             modalities_processed=result["metadata"].get("modalities_processed", []),
             soap_generated=result["metadata"].get("soap_generated", False),
-            message="Case ingested successfully" if result["status"] == "success" else result.get("error", "Unknown error")
+            message="Case ingested successfully" if result["status"] == "success" else result.get("error", "Unknown error"),
+            rag_suggestions=rag_suggestions
         )
         
     except Exception as e:
@@ -1131,14 +1207,26 @@ async def search_knowledge_base(request: KnowledgeSearchRequest):
         start_time = time.time()
         
         # Create separate storage instance for knowledge base
-        knowledge_storage = QdrantStorage(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", "6334")),
-            collection_name="hygiaai_knowledge_base",
-            vector_size=768,
-            enable_encryption=False,
-            enable_deidentification=False
-        )
+        qdrant_url = os.getenv("QDRANT_URL")
+        if qdrant_url:
+            knowledge_storage = QdrantStorage(
+                url=qdrant_url,
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
+        else:
+            knowledge_storage = QdrantStorage(
+                host=os.getenv("QDRANT_HOST", "localhost"),
+                port=int(os.getenv("QDRANT_PORT", "6334")),
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
         
         # Build filters
         filters = {}
@@ -1265,14 +1353,26 @@ async def get_knowledge_domains():
     """
     try:
         # Create separate storage instance for knowledge base
-        knowledge_storage = QdrantStorage(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", "6334")),
-            collection_name="hygiaai_knowledge_base",
-            vector_size=768,
-            enable_encryption=False,
-            enable_deidentification=False
-        )
+        qdrant_url = os.getenv("QDRANT_URL")
+        if qdrant_url:
+            knowledge_storage = QdrantStorage(
+                url=qdrant_url,
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
+        else:
+            knowledge_storage = QdrantStorage(
+                host=os.getenv("QDRANT_HOST", "localhost"),
+                port=int(os.getenv("QDRANT_PORT", "6334")),
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
         
         # Scroll through knowledge base to get unique domains
         # Note: This is a simplified approach. In production, you'd maintain a separate index
@@ -1303,14 +1403,26 @@ async def get_knowledge_sources():
     """
     try:
         # Create separate storage instance for knowledge base
-        knowledge_storage = QdrantStorage(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", "6334")),
-            collection_name="hygiaai_knowledge_base",
-            vector_size=768,
-            enable_encryption=False,
-            enable_deidentification=False
-        )
+        qdrant_url = os.getenv("QDRANT_URL")
+        if qdrant_url:
+            knowledge_storage = QdrantStorage(
+                url=qdrant_url,
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
+        else:
+            knowledge_storage = QdrantStorage(
+                host=os.getenv("QDRANT_HOST", "localhost"),
+                port=int(os.getenv("QDRANT_PORT", "6334")),
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
         
         # Scroll through knowledge base to get unique sources
         scroll_result = knowledge_storage.client.scroll(
@@ -1331,4 +1443,130 @@ async def get_knowledge_sources():
     except Exception as e:
         logger.error(f"Error getting sources: {e}")
         return []
+
+
+@router.post("/knowledge/upload")
+async def upload_knowledge_file(
+    file: UploadFile = File(...),
+    domain: Optional[str] = Form(None),
+    source: Optional[str] = Form(None),
+    year: Optional[int] = Form(None),
+    author: Optional[str] = Form(None)
+):
+    """
+    Upload and process a file for knowledge base ingestion
+    
+    Supports: PDF, DOCX, TXT, MD files
+    """
+    try:
+        # Validate file type
+        allowed_extensions = ['.pdf', '.docx', '.doc', '.txt', '.md']
+        file_ext = Path(file.filename).suffix.lower()
+        
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file_ext}. Allowed: {', '.join(allowed_extensions)}"
+            )
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Process file to extract text
+        logger.info(f"Processing file: {file.filename}")
+        processed = FileProcessor.process_file(file.filename, file_content)
+        
+        # Prepare document data
+        document_data = {
+            "title": processed.get("title", Path(file.filename).stem),
+            "content": processed.get("content", processed.get("text", "")),
+            "text": processed.get("text", processed.get("content", "")),
+            "source": source or "User Upload",
+            "domain": domain or "clinical_reference",
+            "year": year or datetime.now(timezone.utc).year,
+            "author": author or processed.get("metadata", {}).get("author", ""),
+            "file_type": processed.get("file_type", file_ext[1:]),
+            "filename": file.filename,
+            "provenance_url": f"file://{file.filename}",
+            "version": "1.0",
+            **processed.get("metadata", {})
+        }
+        
+        # Create metadata
+        metadata = KnowledgeBaseMetadata(
+            title=document_data["title"],
+            source=document_data["source"],
+            domain=document_data["domain"],
+            year=document_data["year"],
+            embedding_type=EmbeddingType.TEXT,
+            access_type=AccessType.OPEN,
+            provenance_url=document_data["provenance_url"],
+            author=document_data["author"],
+            version="1.0"
+        )
+        
+        # Initialize knowledge base storage
+        qdrant_url = os.getenv("QDRANT_URL")
+        if qdrant_url:
+            knowledge_storage = QdrantStorage(
+                url=qdrant_url,
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
+        else:
+            knowledge_storage = QdrantStorage(
+                host=os.getenv("QDRANT_HOST", "localhost"),
+                port=int(os.getenv("QDRANT_PORT", "6334")),
+                api_key=os.getenv("QDRANT_API_KEY"),
+                collection_name="hygiaai_knowledge_base",
+                vector_size=768,
+                enable_encryption=False,
+                enable_deidentification=False
+            )
+        
+        # Initialize embedding generator
+        embedder = BioBERTEmbeddingGenerator()
+        
+        # Initialize ingestion pipeline
+        ingestion_pipeline = KnowledgeIngestionPipeline(
+            qdrant_storage=knowledge_storage,
+            text_embedding_generator=lambda text: embedder.generate_embedding(text),
+            chunk_size=512,
+            chunk_overlap=50
+        )
+        
+        # Ingest document
+        import time
+        start_time = time.time()
+        logger.info(f"Ingesting document: {document_data['title']} (size: {len(file_content)} bytes)")
+        
+        # Get text length for progress estimation
+        text_length = len(document_data.get("text", "") or document_data.get("content", ""))
+        estimated_chunks = max(1, text_length // 512)  # Rough estimate
+        logger.info(f"Estimated chunks: {estimated_chunks}, text length: {text_length} characters")
+        
+        point_ids = ingestion_pipeline.ingest_document(document_data, metadata=metadata)
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Successfully ingested document in {elapsed_time:.2f}s: {len(point_ids)} chunks created")
+        
+        return {
+            "success": True,
+            "message": f"Successfully uploaded and processed {file.filename}",
+            "document_id": point_ids[0] if point_ids else None,
+            "chunks_created": len(point_ids),
+            "title": document_data["title"],
+            "domain": document_data["domain"],
+            "source": document_data["source"],
+            "processing_time_seconds": round(elapsed_time, 2)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading knowledge file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 

@@ -422,6 +422,98 @@ export function MultimodalInput() {
             </button>
           </div>
         )}
+
+        {/* RAG Suggestions Display */}
+        {Array.from(uploadResults.values()).map((result, idx) => {
+          const suggestions = result?.rag_suggestions;
+          if (!suggestions || suggestions.error) return null;
+
+          return (
+            <div key={idx} className="bg-white dark:bg-[#1E293B] rounded-2xl shadow-sm border border-slate/20 dark:border-[#475569]/30 p-6 mt-6">
+              <h2 className="text-lg font-semibold text-[#1E3A8A] dark:text-white mb-4" style={{ fontWeight: 600 }}>
+                🤖 AI Clinical Suggestions
+              </h2>
+
+              {/* Differential Diagnoses */}
+              {suggestions.differential_diagnoses && suggestions.differential_diagnoses.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-md font-semibold text-[#0F172A] dark:text-white mb-3">Differential Diagnoses</h3>
+                  <div className="space-y-2">
+                    {suggestions.differential_diagnoses.map((diag: any, i: number) => (
+                      <div key={i} className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="flex justify-between items-start">
+                          <span className="font-medium text-[#0F172A] dark:text-white">{diag.diagnosis}</span>
+                          <span className="text-sm text-[#64748B] dark:text-[#94A3B8] ml-2">
+                            {typeof diag.confidence === 'number' 
+                              ? `${(diag.confidence * 100).toFixed(1)}%`
+                              : diag.confidence}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recommendations */}
+              {suggestions.recommendations && suggestions.recommendations.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-md font-semibold text-[#0F172A] dark:text-white mb-3">Recommendations</h3>
+                  <div className="space-y-3">
+                    {suggestions.recommendations.map((rec: any, i: number) => (
+                      <div key={i} className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <span className="inline-block px-2 py-1 text-xs font-medium bg-[#2563EB] dark:bg-[#3B82F6] text-white rounded mr-2">
+                              {rec.type}
+                            </span>
+                            <span className="font-semibold text-[#0F172A] dark:text-white">{rec.title}</span>
+                          </div>
+                          <span className={clsx(
+                            "text-xs font-medium px-2 py-1 rounded",
+                            rec.priority === 'high' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                            rec.priority === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' :
+                            'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300'
+                          )}>
+                            {rec.priority}
+                          </span>
+                        </div>
+                        <p className="text-sm text-[#64748B] dark:text-[#94A3B8] mb-2">{rec.description}</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[#64748B] dark:text-[#94A3B8]">
+                            Confidence: {(rec.confidence * 100).toFixed(1)}%
+                          </span>
+                          {rec.citations && rec.citations.length > 0 && (
+                            <span className="text-xs text-[#2563EB] dark:text-[#3B82F6]">
+                              {rec.citations.length} citation{rec.citations.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Summary */}
+              {suggestions.summary && (
+                <div className="mb-4">
+                  <h3 className="text-md font-semibold text-[#0F172A] dark:text-white mb-2">Summary</h3>
+                  <p className="text-sm text-[#64748B] dark:text-[#94A3B8] bg-slate/5 dark:bg-[#334155] p-3 rounded-lg">
+                    {suggestions.summary}
+                  </p>
+                </div>
+              )}
+
+              {/* Confidence Score */}
+              {suggestions.confidence_score !== undefined && (
+                <div className="text-xs text-[#64748B] dark:text-[#94A3B8] mt-4">
+                  Overall Confidence: {(suggestions.confidence_score * 100).toFixed(1)}%
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

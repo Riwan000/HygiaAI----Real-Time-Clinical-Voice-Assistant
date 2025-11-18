@@ -46,6 +46,7 @@ class SOAPRAGEnhancer:
             self.storage = QdrantStorage(
                 host=os.getenv("QDRANT_HOST", "localhost"),
                 port=int(os.getenv("QDRANT_PORT", "6334")),
+                api_key=os.getenv("QDRANT_API_KEY"),
                 collection_name="hygiaai_knowledge_base",
                 vector_size=768,
                 enable_encryption=False,
