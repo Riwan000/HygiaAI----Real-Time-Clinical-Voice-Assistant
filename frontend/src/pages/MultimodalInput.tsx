@@ -28,6 +28,7 @@ export function MultimodalInput() {
   const [comorbidityInput, setComorbidityInput] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
   const [outcome, setOutcome] = useState('');
+  const [diseaseDescription, setDiseaseDescription] = useState('');
 
   /**
    * Handle files selected
@@ -56,16 +57,18 @@ export function MultimodalInput() {
   };
 
   /**
-   * Upload files
+   * Upload files or submit form-only data
    */
   const handleUpload = async () => {
-    if (uploadedFiles.length === 0) {
-      setErrors(new Map([['general', 'Please select at least one file to upload']]));
+    // File upload is now optional - allow form-only submission
+    if (!patientId.trim()) {
+      setErrors(new Map([['general', 'Patient ID is required']]));
       return;
     }
 
-    if (!patientId.trim()) {
-      setErrors(new Map([['general', 'Patient ID is required']]));
+    // Require either files or disease description or other form fields
+    if (uploadedFiles.length === 0 && !diseaseDescription.trim() && !diagnosis.trim()) {
+      setErrors(new Map([['general', 'Please provide at least one file, disease description, or diagnosis']]));
       return;
     }
 
@@ -85,37 +88,79 @@ export function MultimodalInput() {
     );
 
     try {
-      // Upload each file type (or batch if multiple of same type)
-      const uploadPromises: Promise<void>[] = [];
+      // If files are provided, upload them
+      if (uploadedFiles.length > 0) {
+        // Upload each file type (or batch if multiple of same type)
+        const uploadPromises: Promise<void>[] = [];
 
-      // Upload audio files
-      audioFiles.forEach((uploadedFile) => {
-        const promise = uploadSingleFile(uploadedFile, 'audio_file');
-        uploadPromises.push(promise);
-      });
+        // Upload audio files
+        audioFiles.forEach((uploadedFile) => {
+          const promise = uploadSingleFile(uploadedFile, 'audio_file');
+          uploadPromises.push(promise);
+        });
 
-      // Upload image files
-      imageFiles.forEach((uploadedFile) => {
-        const promise = uploadSingleFile(uploadedFile, 'image_file');
-        uploadPromises.push(promise);
-      });
+        // Upload image files
+        imageFiles.forEach((uploadedFile) => {
+          const promise = uploadSingleFile(uploadedFile, 'image_file');
+          uploadPromises.push(promise);
+        });
 
-      // Upload text files
-      textFiles.forEach((uploadedFile) => {
-        const promise = uploadSingleFile(uploadedFile, 'text_file');
-        uploadPromises.push(promise);
-      });
+        // Upload text files
+        textFiles.forEach((uploadedFile) => {
+          const promise = uploadSingleFile(uploadedFile, 'text_file');
+          uploadPromises.push(promise);
+        });
 
-      // Upload lab report files (as image_file for now, backend will handle)
-      labReportFiles.forEach((uploadedFile) => {
-        const promise = uploadSingleFile(uploadedFile, 'image_file');
-        uploadPromises.push(promise);
-      });
+        // Upload lab report files (as image_file for now, backend will handle)
+        labReportFiles.forEach((uploadedFile) => {
+          const promise = uploadSingleFile(uploadedFile, 'image_file');
+          uploadPromises.push(promise);
+        });
 
-      await Promise.all(uploadPromises);
+        await Promise.all(uploadPromises);
+      } else {
+        // No files - submit form-only data
+        await submitFormOnly();
+      }
     } catch (error) {
       console.error('Upload error:', error);
       setErrors(new Map([['general', 'Failed to upload files. Please try again.']]));
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  /**
+   * Submit form-only data (no files)
+   */
+  const submitFormOnly = async (): Promise<void> => {
+    try {
+      setIsUploading(true);
+      
+      // Prepare request with form data only
+      const request: IngestRequest = {
+        patient_id: patientId,
+        age_group: ageGroup || undefined,
+        region: region || undefined,
+        comorbidities: comorbidities.length > 0 ? comorbidities : undefined,
+        diagnosis: diagnosis || undefined,
+        outcome: outcome || undefined,
+        transcript_text: diseaseDescription || undefined, // Use disease description as transcript
+      };
+
+      // Call API
+      const response = await ClinicalMemoryService.ingestCase(request);
+
+      if (response.success && response.data) {
+        // Store result with a unique key for form-only submission
+        const formSubmissionId = `form-only-${Date.now()}`;
+        setUploadResults((prev) => new Map(prev.set(formSubmissionId, response.data)));
+      } else {
+        throw new Error(response.error || 'Submission failed');
+      }
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Failed to submit form data';
+      setErrors((prev) => new Map(prev.set('form-only', errorMessage)));
     } finally {
       setIsUploading(false);
     }
@@ -145,6 +190,7 @@ export function MultimodalInput() {
         comorbidities: comorbidities.length > 0 ? comorbidities : undefined,
         diagnosis: diagnosis || undefined,
         outcome: outcome || undefined,
+        transcript_text: diseaseDescription || undefined, // Include disease description
         [fileField]: uploadedFile.file,
       };
 
@@ -360,6 +406,23 @@ export function MultimodalInput() {
               )}
             </div>
 
+            {/* Disease Description */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
+                Description of Patient's Disease
+              </label>
+              <textarea
+                value={diseaseDescription}
+                onChange={(e) => setDiseaseDescription(e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2.5 border border-slate/30 dark:border-[#475569]/30 rounded-lg bg-white dark:bg-[#334155] text-[#0F172A] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 focus:border-[#2563EB] transition-all resize-y"
+                placeholder="Describe the patient's symptoms, disease presentation, clinical findings, etc. This will be used to generate a SOAP report."
+              />
+              <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                This description will be converted to a SOAP report and stored in the patient database.
+              </p>
+            </div>
+
             {/* Outcome */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-[#0F172A] dark:text-white mb-2">
@@ -376,11 +439,14 @@ export function MultimodalInput() {
           </div>
         </div>
 
-        {/* File Upload Section */}
+        {/* File Upload Section (Optional) */}
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl shadow-sm border border-slate/20 dark:border-[#475569]/30 p-6">
-          <h2 className="text-lg font-semibold text-[#1E3A8A] dark:text-white mb-4" style={{ fontWeight: 600 }}>
-            Upload Files
+          <h2 className="text-lg font-semibold text-[#1E3A8A] dark:text-white mb-2" style={{ fontWeight: 600 }}>
+            Upload Files <span className="text-sm font-normal text-[#64748B] dark:text-[#94A3B8]">(Optional)</span>
           </h2>
+          <p className="text-sm text-[#64748B] dark:text-[#94A3B8] mb-4">
+            You can upload audio recordings, images, or documents. If no files are provided, the form data will be used to generate a SOAP report.
+          </p>
 
           <FileUpload
             onFilesSelected={handleFilesSelected}
@@ -390,39 +456,39 @@ export function MultimodalInput() {
         </div>
 
         {/* Action Buttons */}
-        {hasUploadedFiles && (
-          <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between">
+          {hasUploadedFiles && (
             <button
               type="button"
               onClick={handleClearAll}
               disabled={isUploading}
               className="px-4 py-2.5 text-sm font-medium text-[#0F172A] dark:text-white bg-slate/10 dark:bg-[#475569]/30 rounded-lg hover:bg-slate/20 dark:hover:bg-[#475569]/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Clear All
+              Clear All Files
             </button>
+          )}
 
-            <button
-              type="button"
-              onClick={handleUpload}
-              disabled={isUploading || !patientId.trim()}
-              className={clsx(
-                'px-6 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200',
-                isUploading || !patientId.trim()
-                  ? 'bg-[#64748B] dark:bg-[#475569] cursor-not-allowed'
-                  : 'bg-[#2563EB] dark:bg-[#3B82F6] hover:bg-[#1E3A8A] dark:hover:bg-[#2563EB]'
-              )}
-            >
-              {isUploading ? (
-                <span className="flex items-center space-x-2">
-                  <Loading size="sm" />
-                  <span>Uploading...</span>
-                </span>
-              ) : (
-                'Upload Files'
-              )}
-            </button>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={isUploading || !patientId.trim()}
+            className={clsx(
+              'px-6 py-2.5 text-sm font-semibold text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200',
+              isUploading || !patientId.trim()
+                ? 'bg-[#64748B] dark:bg-[#475569] cursor-not-allowed'
+                : 'bg-[#2563EB] dark:bg-[#3B82F6] hover:bg-[#1E3A8A] dark:hover:bg-[#2563EB]'
+            )}
+          >
+            {isUploading ? (
+              <span className="flex items-center space-x-2">
+                <Loading size="sm" />
+                <span>{hasUploadedFiles ? 'Uploading...' : 'Submitting...'}</span>
+              </span>
+            ) : (
+              hasUploadedFiles ? 'Upload Files & Generate SOAP' : 'Generate SOAP Report'
+            )}
+          </button>
+        </div>
 
         {/* SOAP Note Display */}
         {Array.from(uploadResults.values()).map((result, idx) => {

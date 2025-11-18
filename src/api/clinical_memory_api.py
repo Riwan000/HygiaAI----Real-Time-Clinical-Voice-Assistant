@@ -264,6 +264,7 @@ async def ingest_multimodal(
     comorbidities: Optional[str] = Form(None),  # JSON string
     diagnosis: Optional[str] = Form(None),
     outcome: Optional[str] = Form(None),
+    disease_description: Optional[str] = Form(None),  # New field for disease description
     audio_file: Optional[UploadFile] = File(None),
     image_file: Optional[UploadFile] = File(None),
     text_file: Optional[UploadFile] = File(None),
@@ -311,8 +312,21 @@ async def ingest_multimodal(
         logger.info(f"Generated case_id: {case_id}")
         
         # Process text/transcript
+        # Priority: disease_description > transcript_text > text_file
         extracted_text = ""
-        if transcript_text:
+        if disease_description:
+            # Use disease description as primary text input
+            try:
+                extracted_text = disease_description
+                modalities["text"] = CaseModality(
+                    modality_type="text",
+                    content={"transcript": disease_description}
+                )
+                logger.info(f"Added text modality from disease_description ({len(disease_description)} chars)")
+            except Exception as text_error:
+                logger.error(f"Error creating text modality from disease_description: {text_error}", exc_info=True)
+                raise HTTPException(status_code=400, detail=f"Error processing disease description: {str(text_error)}")
+        elif transcript_text:
             try:
                 extracted_text = transcript_text
                 modalities["text"] = CaseModality(
@@ -461,8 +475,13 @@ async def ingest_multimodal(
             # Build a synthetic transcript from form inputs
             synthetic_transcript_parts = []
             
+            # Prioritize disease_description if provided
+            if disease_description:
+                synthetic_transcript_parts.append(f"PATIENT PRESENTATION:\n{disease_description}")
+            
+            # Add other form fields as structured information
             if age_group:
-                synthetic_transcript_parts.append(f"Patient age group: {age_group}")
+                synthetic_transcript_parts.append(f"Age Group: {age_group}")
             if region:
                 synthetic_transcript_parts.append(f"Region: {region}")
             if comorbidities_list:
@@ -474,7 +493,7 @@ async def ingest_multimodal(
             
             # Create a basic clinical note format
             if synthetic_transcript_parts:
-                synthetic_transcript = "CLINICAL ENTRY:\n" + "\n".join(synthetic_transcript_parts)
+                synthetic_transcript = "\n\n".join(synthetic_transcript_parts)
             else:
                 # Minimal transcript if only patient_id is provided
                 synthetic_transcript = f"Patient consultation for patient ID: {patient_id}"
@@ -522,8 +541,11 @@ async def ingest_multimodal(
                 embedder = BioBERTEmbeddingGenerator()
                 
                 # Extract text content for patient record
+                # Priority: disease_description > transcript_text > text_file > modalities
                 text_content = ""
-                if transcript_text:
+                if disease_description:
+                    text_content = disease_description
+                elif transcript_text:
                     text_content = transcript_text
                 elif text_file:
                     # Re-read text file content
@@ -577,8 +599,10 @@ async def ingest_multimodal(
                 # Extract and combine all text sources for RAG query
                 query_text = ""
                 
-                # Get text from various sources
-                if transcript_text:
+                # Get text from various sources (priority: disease_description > transcript_text > modalities)
+                if disease_description:
+                    query_text = disease_description
+                elif transcript_text:
                     query_text = transcript_text
                 elif "text" in modalities:
                     query_text = modalities["text"].content.get("transcript", "")

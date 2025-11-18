@@ -33,6 +33,7 @@ export type IngestRequest = {
   comorbidities?: string[];
   diagnosis?: string;
   outcome?: string;
+  disease_description?: string; // New field for disease description
   audio_file?: File;
   image_file?: File;
   text_file?: File;
@@ -266,6 +267,7 @@ export class ClinicalMemoryService {
     }
     if (request.diagnosis) formData.append('diagnosis', request.diagnosis);
     if (request.outcome) formData.append('outcome', request.outcome);
+    if (request.disease_description) formData.append('disease_description', request.disease_description);
     if (request.transcript_text) formData.append('transcript_text', request.transcript_text);
     if (request.audio_file) formData.append('audio_file', request.audio_file);
     if (request.image_file) formData.append('image_file', request.image_file);
