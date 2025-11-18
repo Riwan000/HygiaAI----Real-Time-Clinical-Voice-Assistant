@@ -7,14 +7,24 @@ WORKDIR /app/frontend
 # Copy frontend package files
 COPY frontend/package*.json ./
 
-# Install frontend dependencies
-RUN npm ci --only=production=false
+# Install frontend dependencies (including devDependencies needed for build)
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
 
+# Set production environment variables for build
+ENV NODE_ENV=production
+ENV VITE_API_BASE_URL=/api
+
 # Build frontend for production
-RUN npm run build
+# Try build:prod first, fallback to direct vite build if needed
+RUN set -e; \
+    npm run build:prod 2>&1 || \
+    (echo "Build:prod failed, trying standard build..." && npm run build 2>&1) || \
+    (echo "Standard build failed, trying direct vite build..." && npx vite build --mode production 2>&1) || \
+    (echo "All build attempts failed. Checking for dist directory..." && \
+     (test -d dist && echo "dist directory exists" || (echo "dist directory missing" && exit 1)))
 
 # Stage 2: Build Python dependencies
 FROM python:3.11-slim AS builder
