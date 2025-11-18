@@ -392,37 +392,40 @@ class CaseRetriever:
             # Apply patient_id filtering in Python (since it may not have an index)
             if patient_id_filter:
                 filtered_results = []
+                # Normalize filter value (trim and lowercase for comparison)
+                filter_value = str(patient_id_filter).strip().lower()
+                
                 for result in results:
                     payload = result.get("payload", {})
-                    # Check patient_id in multiple possible locations
-                    payload_patient_id = payload.get("patient_id")
+                    matched = False
                     
-                    # Check in case_metadata dict
-                    metadata_patient_id = None
-                    case_metadata = payload.get("case_metadata")
-                    if isinstance(case_metadata, dict):
-                        metadata_patient_id = case_metadata.get("patient_id")
-                    
-                    # Check in case_data dict
-                    case_data_patient_id = None
-                    case_data = payload.get("case_data")
-                    if isinstance(case_data, dict):
-                        case_data_patient_id = case_data.get("patient_id")
+                    # Check patient_id in multiple possible locations (case-insensitive, trimmed)
+                    locations_to_check = [
+                        payload.get("patient_id"),
+                        payload.get("case_metadata", {}).get("patient_id") if isinstance(payload.get("case_metadata"), dict) else None,
+                        payload.get("case_data", {}).get("patient_id") if isinstance(payload.get("case_data"), dict) else None,
+                    ]
                     
                     # Also check if patient_id is in the case_id (some cases have patient_id in case_id)
-                    case_id_contains_patient = False
-                    case_id = payload.get("case_id") or str(result.get("id", ""))
-                    if patient_id_filter in case_id:
-                        case_id_contains_patient = True
+                    case_id = str(payload.get("case_id") or result.get("id", "")).lower()
+                    if filter_value in case_id:
+                        matched = True
                     
-                    # Match if any of these match
-                    if (payload_patient_id == patient_id_filter or 
-                        metadata_patient_id == patient_id_filter or 
-                        case_data_patient_id == patient_id_filter or
-                        case_id_contains_patient):
+                    # Check all locations
+                    for location_value in locations_to_check:
+                        if location_value:
+                            location_str = str(location_value).strip().lower()
+                            if location_str == filter_value:
+                                matched = True
+                                break
+                    
+                    if matched:
                         filtered_results.append(result)
                 
                 logger.info(f"Filtered {len(filtered_results)} cases for patient_id: {patient_id_filter} (from {len(results)} total)")
+                if filtered_results:
+                    sample_ids = [str(r.get("payload", {}).get("patient_id", "N/A"))[:20] for r in filtered_results[:3]]
+                    logger.debug(f"Sample patient_ids found: {sample_ids}")
                 results = filtered_results[:options.limit]
             
             logger.info(f"Scrolled {len(results)} cases with filters")
