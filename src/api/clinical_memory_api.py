@@ -267,81 +267,129 @@ async def ingest_multimodal(
     Automatically detects input type and routes to appropriate processor.
     """
     try:
+        logger.info(f"Received multimodal ingestion request for patient: {patient_id}")
+        
         ingestion = get_case_ingestion()
+        logger.info("Case ingestion orchestrator initialized")
         
         # Parse comorbidities if provided
         comorbidities_list = []
         if comorbidities:
             try:
                 comorbidities_list = json.loads(comorbidities)
-            except:
+                logger.info(f"Parsed comorbidities: {comorbidities_list}")
+            except Exception as parse_error:
+                logger.warning(f"Failed to parse comorbidities as JSON: {parse_error}, treating as string")
                 comorbidities_list = [comorbidities] if isinstance(comorbidities, str) else []
         
         # Create case metadata
-        metadata = CaseMetadata(
-            age_group=age_group,
-            region=region,
-            comorbidities=comorbidities_list,
-            diagnosis=diagnosis,
-            outcome=outcome
-        )
+        try:
+            metadata = CaseMetadata(
+                age_group=age_group,
+                region=region,
+                comorbidities=comorbidities_list,
+                diagnosis=diagnosis,
+                outcome=outcome
+            )
+            logger.info(f"Created case metadata: age_group={age_group}, region={region}, diagnosis={diagnosis}")
+        except Exception as metadata_error:
+            logger.error(f"Error creating CaseMetadata: {metadata_error}", exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Invalid metadata: {str(metadata_error)}")
         
         # Build modalities
         modalities = {}
         case_id = f"case_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{patient_id}"
+        logger.info(f"Generated case_id: {case_id}")
         
         # Process text/transcript
         if transcript_text:
-            modalities["text"] = CaseModality(
-                modality_type="text",
-                content={"transcript": transcript_text}
-            )
+            try:
+                modalities["text"] = CaseModality(
+                    modality_type="text",
+                    content={"transcript": transcript_text}
+                )
+                logger.info(f"Added text modality from transcript_text ({len(transcript_text)} chars)")
+            except Exception as text_error:
+                logger.error(f"Error creating text modality from transcript_text: {text_error}", exc_info=True)
+                raise HTTPException(status_code=400, detail=f"Error processing text: {str(text_error)}")
         elif text_file:
-            text_content = await text_file.read()
-            modalities["text"] = CaseModality(
-                modality_type="text",
-                content={"transcript": text_content.decode("utf-8")}
-            )
+            try:
+                text_content = await text_file.read()
+                decoded_text = text_content.decode("utf-8")
+                modalities["text"] = CaseModality(
+                    modality_type="text",
+                    content={"transcript": decoded_text}
+                )
+                logger.info(f"Added text modality from text_file ({len(decoded_text)} chars)")
+            except Exception as text_file_error:
+                logger.error(f"Error processing text_file: {text_file_error}", exc_info=True)
+                raise HTTPException(status_code=400, detail=f"Error processing text file: {str(text_file_error)}")
         
         # Process audio
         if audio_file:
-            # Save audio file temporarily
-            audio_path = Path(f"/tmp/{audio_file.filename}")
-            with open(audio_path, "wb") as f:
-                content = await audio_file.read()
-                f.write(content)
-            
-            modalities["audio"] = CaseModality(
-                modality_type="audio",
-                content={"audio_path": str(audio_path)}
-            )
+            # Save audio file temporarily (cross-platform)
+            import tempfile
+            temp_dir = Path(tempfile.gettempdir())
+            audio_path = temp_dir / audio_file.filename
+            try:
+                with open(audio_path, "wb") as f:
+                    content = await audio_file.read()
+                    f.write(content)
+                
+                modalities["audio"] = CaseModality(
+                    modality_type="audio",
+                    content={"audio_path": str(audio_path)}
+                )
+            except Exception as audio_error:
+                logger.error(f"Error saving audio file: {audio_error}")
+                raise HTTPException(status_code=500, detail=f"Error processing audio file: {str(audio_error)}")
         
         # Process image
         if image_file:
-            # Save image file temporarily
-            image_path = Path(f"/tmp/{image_file.filename}")
-            with open(image_path, "wb") as f:
-                content = await image_file.read()
-                f.write(content)
-            
-            modalities["image"] = CaseModality(
-                modality_type="image",
-                content={"image_path": str(image_path)}
-            )
+            # Save image file temporarily (cross-platform)
+            import tempfile
+            temp_dir = Path(tempfile.gettempdir())
+            image_path = temp_dir / image_file.filename
+            try:
+                with open(image_path, "wb") as f:
+                    content = await image_file.read()
+                    f.write(content)
+                
+                modalities["image"] = CaseModality(
+                    modality_type="image",
+                    content={"image_path": str(image_path)}
+                )
+            except Exception as image_error:
+                logger.error(f"Error saving image file: {image_error}")
+                raise HTTPException(status_code=500, detail=f"Error processing image file: {str(image_error)}")
         
         if not modalities:
-            raise HTTPException(status_code=400, detail="No input data provided")
+            logger.error("No modalities provided in request")
+            raise HTTPException(status_code=400, detail="No input data provided. Please provide transcript_text, text_file, audio_file, or image_file.")
+        
+        logger.info(f"Prepared {len(modalities)} modality(ies): {list(modalities.keys())}")
         
         # Create case
-        case = Case(
-            case_id=case_id,
-            patient_id=patient_id,
-            modalities=modalities,
-            metadata=metadata
-        )
+        try:
+            case = Case(
+                case_id=case_id,
+                patient_id=patient_id,
+                modalities=modalities,
+                metadata=metadata
+            )
+            logger.info(f"Created Case object: {case_id}")
+        except Exception as case_error:
+            logger.error(f"Error creating Case object: {case_error}", exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Error creating case: {str(case_error)}")
         
         # Ingest case
-        result = ingestion.ingest_case(case, generate_soap=True)
+        try:
+            logger.info(f"Starting case ingestion for {case_id}...")
+            result = ingestion.ingest_case(case, generate_soap=True)
+            logger.info(f"Case ingestion completed: status={result.get('status')}")
+        except Exception as ingest_error:
+            logger.error(f"Error during case ingestion: {ingest_error}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Error ingesting case: {str(ingest_error)}")
         
         # Also store in patient_memory_collection for patient history retrieval
         if result["status"] == "success":
@@ -552,9 +600,15 @@ Generated: {datetime.now(timezone.utc).isoformat()}
             rag_suggestions=rag_suggestions
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Error in multimodal ingestion: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in multimodal ingestion: {e}", exc_info=True)
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Full traceback:\n{error_details}")
+        raise HTTPException(status_code=500, detail=f"Error processing multimodal input: {str(e)}")
 
 
 @router.post("/soap", response_model=SOAPResponse)
