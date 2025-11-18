@@ -224,7 +224,7 @@
         "dependencies": [
           "74"
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": []
       },
       {
@@ -553,22 +553,116 @@
       {
         "id": "80",
         "title": "Test WebSocket Proxy Solution",
-        "description": "Develop a testing plan for verifying the functionality of the newly implemented backend proxy solution to handle live transcription errors via Deepgram.",
-        "details": "The task involves creating test cases that simulate various network conditions, firewall settings, and browser restrictions. These tests should also include attempts with different API key permissions to ensure robust error handling across all potential issues related to WebSocket connection failures (specifically focusing on the abnormal closure code 1006). The testing plan will utilize tools like Wireshark or Fiddler for network simulation and may require setting up a controlled test environment that replicates common client-side browser scenarios. Code examples should demonstrate how to trigger WebSocket events programmatically, as well as expected versus actual output logging.",
-        "testStrategy": "Test the backend proxy using automated testing frameworks like Selenium or Puppeteer in combination with supervised HTTP request and response inspection tools such as Postman or Curl. Develop scripts that execute transcription initiation under different conditions, monitor WebSocket traffic for connection establishment failures (1006 errors), analyze error logs to identify the root cause of closures being abnormal, assess network latency impacts on connectivity and test response handling in scenarios with intentionally introduced delays or packet loss. Additionally, evaluate how well our proxy solution handles browser-specific restrictions such as cross-origin issues by testing it within various browsers' sandboxed environments.",
-        "status": "pending",
+        "description": "Develop and maintain an ongoing testing plan for verifying the functionality of the backend proxy solution to handle live transcription errors via Deepgram.",
+        "status": "done",
         "dependencies": [
-          "64"
+          "6"
         ],
         "priority": "high",
-        "subtasks": []
+        "details": "- Developed test_websocket_proxy.py with comprehensive unit tests covering: Connection establishment and closure, API key validation scenarios (including various permission levels), Network condition simulation incorporating firewall settings, proxy configurations, timeouts/latency issues affecting WebSocket traffic - Monitor for abnormal connection closures indicated by code 1006 to enhance error handling mechanisms \n\t(subtask: 'Connection Establishment and Abrupt Closure', ID: 2).",
+        "testStrategy": "- Create real-world WebSocket tests using test_websocket_proxy_integration.py, focusing on transcription initiation across different browser environments (including sandboxed ones) \n\t(subtask: 'Transmission Testing Across Browsers', ID: 5).",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Connection Establishment and Abrupt Closure (ID:2)",
+            "description": "Test connection establishment to the backend proxy using API keys with various permission levels. Ensure that abnormal closure codes such as code 1006 are adez...",
+            "dependencies": [],
+            "details": "- Utilize test runner scripts for executing tests - Use Wireshark or Fiddler tools to simulate network conditions and verify the robust handling of connection closures (specifically focusing on abnormal closure code 1006).\n",
+            "status": "completed",
+            "testStrategy": "- Employ test runner scripts alongside Wireshark or Fiddler to simulate network conditions and verify the robust handling of connection closures (specifically focusing on abnormal closure code 1006).\n",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Transmission Testing Across Browsers (ID:5)",
+            "description": "Conduct WebSocket transmission tests within different browser environments to ensure compatibility and robust error handling. Pay special attention to sandboxed browsers.",
+            "dependencies": [],
+            "details": "- Utilize test runner scripts for executing real-world transcription initiation across various web clients, including Safari's private mode - Monitor WebSocket traffic within these environments \n",
+            "status": "pending",
+            "testStrategy": "- Use Puppeteer to automate browser tests with different API key permissions and network conditions. Incorporate Selenium for broader testing across various devices.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Network Condition Simulation",
+            "description": "- Develop scripts that simulate the impact of firewall settings and proxy configurations on WebSocket traffic \n\t(subtask: 'Firewall and Proxy Impact', ID: 4).",
+            "dependencies": [],
+            "details": "- Scripts to mimic common network issues such as latency, packet loss or firewalls blocking/altering traffic \n- Employ Wireshark or Fiddler for detailed trace analysis during test execution.",
+            "status": "pending",
+            "testStrategy": "- Use scripted scenarios in conjunction with tools like Wireshark to simulate various network issues and validate the proxy's error handling mechanisms under such conditions.\n",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Firewall and Proxy Impact (ID:6)",
+            "description": "- Analyze test logs for identifying root causes of connection failures during network simulated scenarios \n\t(subtask: 'Root Cause Analysis', ID: 7).",
+            "dependencies": [],
+            "details": "- Setup controlled testing environment with intentional firewall and proxy obstructions to validate the WebSocket's ability in handling various network restrictions.\n- Log analysis for identifying recurrent error patterns that could indicate underlying issues.",
+            "status": "pending",
+            "testStrategy": "- Execute tests simulating firewalls or proxies obstructing traffic, capture detailed logs during test execution to be analyzed posthumously.\n",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Transmission Testing Across Browsers (ID:8)",
+            "description": "- Develop and document comprehensive guidance on the testing procedures of the WebSocket proxy solution \n\t(subtask: 'Documentation Generation', ID: 9).",
+            "dependencies": [],
+            "details": "- Generate a detailed guide covering test scenarios, setup requirements, execution flow and expected outcomes for each subtest.\n- Document the testing process in WEBSOCKET_PROXY_TESTING.md.",
+            "status": "completed",
+            "testStrategy": "- Create comprehensive documentation detailing every aspect of test planning, scenarios to execute under varying network conditions and browser environments using tools like Puppeteer or Selenium.\n",
+            "parentId": "undefined"
+          },
+          {
+            "id": 6,
+            "title": "Connection Establishment and Abrupt Closure (ID:2)",
+            "description": "- Develop comprehensive test runner scripts in PowerShell and Bash to execute the tests for all subtasks \n\t(subtask: 'Script Development', ID:10).",
+            "dependencies": [],
+            "details": "- Write detailed testing script templates that can be used across various scenarios within both Python-based unit test suite and real-world WebSocket tests.\n- Ensure scripts are flexible to execute, report results efficiently.",
+            "status": "pending",
+            "testStrategy": "- Create a set of PowerShell and Bash scripts for executing the testing framework. The script should handle running all subtasks' individual test scenarios with detailed reporting capabilities.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 7,
+            "title": "Root Cause Analysis (ID:7)",
+            "description": "- Identify abnormalities within logs during network simulations to pinpoint connection establishment and closure issues \n\t(subtask: 'Log Analytics', ID:10).",
+            "dependencies": [],
+            "details": "- Employ advanced logging techniques capturing detailed transaction data which allows for traceback analysis in case of errors or abnormal closures.",
+            "status": "pending",
+            "testStrategy": "- Analyze the logs generated during network simulations to identify patterns that lead to connection establishment and closure failures, particularly focusing on code 1006. This will involve automated parsing techniques within scripting languages like Python.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 8,
+            "title": "Transmission Testing Across Browsers (ID:5)",
+            "description": "- Execute tests using test_websocket_proxy_integration.py to ensure WebSocket protocol is robust across multiple real-world transcription scenarios \n\t(subtask: 'Real World Transcription', ID:10).",
+            "dependencies": [],
+            "details": "- Tests should cover live voice and text transmission in various browser environments, including mobile browsers.\n- Implement cross-origin request handling tests to assess proxy performance under simulated user sessions.",
+            "status": "pending",
+            "testStrategy": "- Conduct real-world transcription initiation using Puppeteer or Selenium scripts with different API key permissions and across various browser environments. Assess the robustness of live voice and text transmission.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 9,
+            "title": "Documentation Generation (ID:9)",
+            "description": "- Develop a comprehensive documentation guide for all aspects related to testing the WebSocket proxy solution \n\t(subtask: 'Testing Documentation', ID:10).",
+            "dependencies": [
+              8
+            ],
+            "details": "- Create detailed guidance covering test scenarios, setup requirements and execution flow with expected outcomes using WEBSOCKET_PROXY_TESTING.md.",
+            "status": "completed",
+            "testStrategy": "- Compose a thorough documentation guide detailing every aspect of the testing plan for transcription initiation via WebSocket protocols under various conditions, as well as steps to replicate and analyze abnormal closure codes.",
+            "parentId": "undefined"
+          }
+        ],
+        "updatedAt": "2025-11-17T22:49:49.040Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2025-11-17T22:11:50.716Z",
+      "lastModified": "2025-11-17T22:49:49.043Z",
       "taskCount": 18,
-      "completedCount": 15,
+      "completedCount": 16,
       "tags": [
         "master"
       ]

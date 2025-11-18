@@ -35,7 +35,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['jsdom'],
+    include: ['happy-dom'],
   },
 });
 

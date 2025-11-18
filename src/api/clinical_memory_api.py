@@ -1088,12 +1088,12 @@ async def calculate_trust_score(request: TrustScoreRequest):
 
 class KnowledgeSearchRequest(BaseModel):
     """Request model for knowledge base search"""
-    query: str = Field(..., description="Search query text")
+    query: str = Field("", description="Search query text. Empty string returns all entries.")
     domain: Optional[str] = Field(None, description="Filter by domain (e.g., 'pathology', 'pharmacology', 'guidelines')")
     source: Optional[str] = Field(None, description="Filter by source")
     year_range: Optional[Dict[str, int]] = Field(None, description="Filter by year range: {'min': 2020, 'max': 2024}")
-    limit: int = Field(20, ge=1, le=50, description="Number of results to return")
-    score_threshold: Optional[float] = Field(0.3, ge=0.0, le=1.0, description="Minimum similarity score")
+    limit: int = Field(100, ge=1, le=500, description="Number of results to return")
+    score_threshold: Optional[float] = Field(0.0, ge=0.0, le=1.0, description="Minimum similarity score")
 
 
 class KnowledgeEntry(BaseModel):
@@ -1140,12 +1140,6 @@ async def search_knowledge_base(request: KnowledgeSearchRequest):
             enable_deidentification=False
         )
         
-        from src.embeddings import BioBERTEmbeddingGenerator
-        embedder = BioBERTEmbeddingGenerator()
-        
-        # Generate query embedding
-        query_embedding = embedder.generate_embedding(request.query)
-        
         # Build filters
         filters = {}
         if request.domain:
@@ -1161,13 +1155,65 @@ async def search_knowledge_base(request: KnowledgeSearchRequest):
                 else:
                     filters["year"] = {"lte": request.year_range["max"]}
         
-        # Search knowledge base collection
-        results = knowledge_storage.search_with_filters(
-            query_embedding=query_embedding,
-            filters=filters if filters else None,
-            limit=request.limit,
-            score_threshold=request.score_threshold
-        )
+        # If query is empty, scroll through all entries instead of searching
+        if not request.query or not request.query.strip():
+            # Scroll through all entries
+            # Note: We'll filter client-side if filters are provided
+            scroll_result = knowledge_storage.client.scroll(
+                collection_name="hygiaai_knowledge_base",
+                limit=request.limit * 2,  # Get more to account for filtering
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            results = []
+            for point in scroll_result[0]:
+                payload = point.payload or {}
+                
+                # Apply filters if provided
+                matches = True
+                if filters:
+                    if "domain" in filters and payload.get("domain") != filters["domain"]:
+                        matches = False
+                    if "source" in filters and payload.get("source") != filters["source"]:
+                        matches = False
+                    if "year" in filters:
+                        year_val = payload.get("year")
+                        if year_val:
+                            year_val = int(year_val) if isinstance(year_val, (int, float, str)) else None
+                            if year_val:
+                                if "gte" in filters["year"] and year_val < filters["year"]["gte"]:
+                                    matches = False
+                                if "lte" in filters["year"] and year_val > filters["year"]["lte"]:
+                                    matches = False
+                        else:
+                            matches = False
+                
+                if matches:
+                    results.append({
+                        "id": point.id,
+                        "payload": payload,
+                        "score": 1.0  # All entries shown when no query
+                    })
+                    
+                    # Stop if we have enough results
+                    if len(results) >= request.limit:
+                        break
+        else:
+            # Perform vector search with query
+            from src.embeddings import BioBERTEmbeddingGenerator
+            embedder = BioBERTEmbeddingGenerator()
+            
+            # Generate query embedding
+            query_embedding = embedder.generate_embedding(request.query)
+            
+            # Search knowledge base collection
+            results = knowledge_storage.search_with_filters(
+                query_embedding=query_embedding,
+                filters=filters if filters else None,
+                limit=request.limit,
+                score_threshold=request.score_threshold
+            )
         
         # Format results
         entries = []

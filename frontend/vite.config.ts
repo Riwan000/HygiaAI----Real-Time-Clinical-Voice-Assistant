@@ -40,8 +40,8 @@ export default defineConfig({
     ],
     // Exclude optional dependencies that may not be installed
     exclude: ['@sentry/react', 'web-vitals'],
-    // Force re-optimization to ensure single React instance
-    force: true,
+    // Don't force re-optimization - let Vite handle it naturally
+    // force: true, // Removed - causes issues with React deduplication
     esbuildOptions: {
       // Ensure React is treated as external during optimization
       define: {
@@ -58,10 +58,10 @@ export default defineConfig({
     strictPort: false, // Allow port increment if 3000 is taken
     host: true, // Listen on all addresses
     hmr: {
-      // Fix HMR WebSocket connection when port is auto-incremented
-      // Use the actual server port (will be auto-detected)
-      port: 3000, // Match the server port
-      clientPort: 3000, // Client-side port for HMR
+      // HMR will automatically use the server port
+      // Don't hardcode ports to allow auto-increment
+      protocol: 'ws',
+      host: 'localhost',
     },
     proxy: {
       '/api': {

@@ -1,0 +1,85 @@
+services:
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: hygiaai-qdrant
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - qdrant_config:/qdrant/config
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - hygiaai-network
+
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ../..
+      dockerfile: deployment/offline/Dockerfile.backend
+    container_name: hygiaai-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../data:/app/data
+      - ../../logs:/app/logs
+      - backend_cache:/app/.cache
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OFFLINE_MODE=true
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    env_file:
+      - .env.offline
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - hygiaai-network
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deployment/offline/Dockerfile.frontend
+    container_name: hygiaai-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_ENABLE_OFFLINE_MODE=true
+      - VITE_ENABLE_FEDERATED_LEARNING=false
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - hygiaai-network
+
+volumes:
+  qdrant_data:
+    driver: local
+  qdrant_config:
+    driver: local
+  backend_cache:
+    driver: local
+
+networks:
+  hygiaai-network:
+    driver: bridge
+

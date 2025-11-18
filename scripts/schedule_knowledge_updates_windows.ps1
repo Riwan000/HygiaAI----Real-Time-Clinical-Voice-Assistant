@@ -3,11 +3,12 @@
 
 $TaskName = "HygiaAI-Knowledge-Base-Update"
 $ScriptPath = Join-Path $PSScriptRoot "update_medical_knowledge_base.py"
-$ProjectRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# Get project root (parent of scripts directory)
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
 $PythonExe = (Get-Command python).Source
 
 Write-Host "Setting up Windows Task Scheduler for Knowledge Base Updates" -ForegroundColor Cyan
-Write-Host "=" * 80
+Write-Host ("=" * 80) -ForegroundColor Cyan
 Write-Host ""
 
 # Check if task already exists

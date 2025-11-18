@@ -1,4 +1,32 @@
 python-socketio
 websockets
 requests
-assemblyai 
+assemblyai
+
+# Web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# Vector database
+qdrant-client>=1.7.0
+
+# ML/AI libraries
+transformers>=4.35.0
+torch>=2.1.0
+sentence-transformers>=2.2.0
+
+# Document generation
+reportlab>=4.0.0
+python-docx>=1.1.0
+
+# Deepgram SDK
+deepgram-sdk>=5.3.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0

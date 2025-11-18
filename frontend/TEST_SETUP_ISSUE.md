@@ -26,12 +26,28 @@ Switched from `jsdom` to `happy-dom` as the test environment. `happy-dom` is:
 ### Solutions to Try
 
 ### Option 1: Reinstall Dependencies
+
+**PowerShell:**
+```powershell
+Set-Location frontend
+npm install
+```
+
+**Bash/Linux/Mac:**
 ```bash
 cd frontend
 npm install
 ```
 
 ### Option 2: Use npx
+
+**PowerShell:**
+```powershell
+Set-Location frontend
+npx vitest run
+```
+
+**Bash/Linux/Mac:**
 ```bash
 cd frontend
 npx vitest run
@@ -82,6 +98,17 @@ All test files are ready and will work once Vitest is installed:
 ## Once Vitest is Installed
 
 Run tests with:
+
+### PowerShell (Windows)
+```powershell
+Set-Location frontend
+npm run test:run        # Run once
+npm run test            # Watch mode
+npm run test:coverage   # With coverage
+npm run test:e2e        # E2E tests
+```
+
+### Bash/Linux/Mac
 ```bash
 cd frontend
 npm run test:run        # Run once
@@ -89,4 +116,9 @@ npm run test            # Watch mode
 npm run test:coverage   # With coverage
 npm run test:e2e        # E2E tests
 ```
+
+**Note:** If you encounter PowerShell-specific issues:
+- Use `Set-Location` instead of `cd` if needed
+- Use semicolons (`;`) instead of `&&` for command chaining
+- Ensure Node.js version is v22.12.0+ or v20.19.0+
 

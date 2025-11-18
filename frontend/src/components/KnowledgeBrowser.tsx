@@ -41,13 +41,18 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
   const [pageSize] = useState(10);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Load available domains and sources on mount
+  // Load available domains and sources, and all entries on mount
   useEffect(() => {
-    const loadFilters = async () => {
+    const loadInitialData = async () => {
       try {
-        const [domainsRes, sourcesRes] = await Promise.all([
+        const [domainsRes, sourcesRes, allEntriesRes] = await Promise.all([
           ClinicalMemoryService.getKnowledgeDomains(),
           ClinicalMemoryService.getKnowledgeSources(),
+          ClinicalMemoryService.searchKnowledgeBase({
+            query: '', // Empty query to get all entries
+            limit: 100,
+            score_threshold: 0.0,
+          }),
         ]);
 
         if (domainsRes.success && domainsRes.data) {
@@ -56,12 +61,18 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
         if (sourcesRes.success && sourcesRes.data) {
           setAvailableSources(sourcesRes.data);
         }
+        if (allEntriesRes.success && allEntriesRes.data) {
+          setEntries(allEntriesRes.data.entries);
+          setTotalFound(allEntriesRes.data.total_found);
+          setDomains(allEntriesRes.data.domains);
+          setSources(allEntriesRes.data.sources);
+        }
       } catch (err) {
-        console.error('Error loading filters:', err);
+        console.error('Error loading initial data:', err);
       }
     };
 
-    loadFilters();
+    loadInitialData();
   }, []);
 
   // Load bookmarks from localStorage
@@ -78,26 +89,21 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
   }, []);
 
   /**
-   * Perform search
+   * Perform search or filter existing entries
    */
   const handleSearch = async (page: number = 1) => {
-    if (!searchQuery.trim()) {
-      setError('Please enter a search query');
-      return;
-    }
-
     setIsSearching(true);
     setError(null);
     setCurrentPage(page);
 
     try {
       const response = await ClinicalMemoryService.searchKnowledgeBase({
-        query: searchQuery,
+        query: searchQuery.trim() || '', // Empty query returns all entries
         domain: selectedDomain || undefined,
         source: selectedSource || undefined,
         year_range: Object.keys(yearRange).length > 0 ? yearRange : undefined,
-        limit: pageSize * 2, // Get more results for pagination
-        score_threshold: 0.3,
+        limit: 100, // Get results for pagination (backend max is 500)
+        score_threshold: searchQuery.trim() ? 0.3 : 0.0, // Lower threshold when showing all
       });
 
       if (response.success && response.data) {
@@ -197,13 +203,13 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
           <button
             type="button"
             onClick={() => handleSearch(1)}
-            disabled={isSearching || !searchQuery.trim()}
+            disabled={isSearching}
             className="px-6 py-3 bg-[#2563EB] dark:bg-[#3B82F6] text-white rounded-lg hover:bg-[#1E3A8A] dark:hover:bg-[#2563EB] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2"
-            aria-label={isSearching ? 'Searching...' : 'Search knowledge base'}
-            aria-disabled={isSearching || !searchQuery.trim()}
+            aria-label={isSearching ? 'Searching...' : searchQuery.trim() ? 'Search knowledge base' : 'Refresh knowledge base'}
+            aria-disabled={isSearching}
           >
             <MagnifyingGlassIcon className="h-5 w-5" aria-hidden="true" />
-            <span>{isSearching ? 'Searching...' : 'Search'}</span>
+            <span>{isSearching ? 'Searching...' : searchQuery.trim() ? 'Search' : 'Refresh'}</span>
           </button>
           <button
             type="button"
@@ -363,12 +369,16 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-[#1E3A8A] dark:text-white mb-1" style={{ fontWeight: 600 }}>
-                Search Results
+                {searchQuery.trim() ? 'Search Results' : 'Knowledge Base'}
               </h2>
               <p className="text-sm text-[#64748B] dark:text-[#94A3B8]">
-                Found {totalFound} {totalFound === 1 ? 'entry' : 'entries'}
+                {searchQuery.trim() 
+                  ? `Found ${totalFound} ${totalFound === 1 ? 'entry' : 'entries'}`
+                  : `Showing ${totalFound} ${totalFound === 1 ? 'entry' : 'entries'}`
+                }
                 {selectedDomain && ` in ${selectedDomain}`}
                 {selectedSource && ` from ${selectedSource}`}
+                {searchQuery.trim() && ` for "${searchQuery}"`}
               </p>
             </div>
             {entries.length > 0 && (
@@ -431,25 +441,17 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
       )}
 
       {/* Empty State */}
-      {!isSearching && entries.length === 0 && searchQuery && !error && (
-        <div className="text-center py-12 bg-white dark:bg-[#1E293B] rounded-lg border border-slate/20 dark:border-[#475569]/30">
-          <BookOpenIcon className="h-12 w-12 text-[#64748B] dark:text-[#94A3B8] mx-auto mb-3" />
-          <p className="text-[#64748B] dark:text-[#94A3B8]">No results found</p>
-          <p className="text-sm text-[#64748B] dark:text-[#94A3B8] mt-2">
-            Try adjusting your search query or filters
-          </p>
-        </div>
-      )}
-
-      {/* Initial State */}
-      {!isSearching && entries.length === 0 && !searchQuery && (
+      {!isSearching && entries.length === 0 && !error && (
         <div className="text-center py-12 bg-white dark:bg-[#1E293B] rounded-lg border border-slate/20 dark:border-[#475569]/30">
           <BookOpenIcon className="h-12 w-12 text-[#64748B] dark:text-[#94A3B8] mx-auto mb-3" />
           <p className="text-[#64748B] dark:text-[#94A3B8]">
-            Enter a search query to browse the knowledge base
+            {searchQuery.trim() ? 'No results found' : 'No entries available'}
           </p>
           <p className="text-sm text-[#64748B] dark:text-[#94A3B8] mt-2">
-            Search for medical guidelines, textbook content, research summaries, and more
+            {searchQuery.trim() 
+              ? 'Try adjusting your search query or filters'
+              : 'The knowledge base appears to be empty. Please populate it first.'
+            }
           </p>
         </div>
       )}

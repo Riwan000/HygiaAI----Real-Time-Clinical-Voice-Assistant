@@ -360,9 +360,10 @@ export class ClinicalMemoryService {
 
   /**
    * Search knowledge base
+   * If query is empty, returns all entries
    */
   static async searchKnowledgeBase(request: {
-    query: string;
+    query?: string;
     domain?: string;
     source?: string;
     year_range?: { min?: number; max?: number };
@@ -379,7 +380,14 @@ export class ClinicalMemoryService {
     return apiRequest({
       method: 'POST',
       url: API_ENDPOINTS.CLINICAL_MEMORY.KNOWLEDGE_SEARCH,
-      data: request,
+      data: {
+        query: request.query || '',
+        domain: request.domain,
+        source: request.source,
+        year_range: request.year_range,
+        limit: request.limit || 100,
+        score_threshold: request.score_threshold ?? 0.0,
+      },
     });
   }
 
