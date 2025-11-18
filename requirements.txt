@@ -7,6 +7,7 @@ assemblyai
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
+python-multipart>=0.0.6  # Required for FastAPI form data and file uploads
 
 # Vector database
 qdrant-client>=1.7.0

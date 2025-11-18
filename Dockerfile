@@ -47,10 +47,11 @@ RUN pip install --no-cache-dir --user \
     transformers==4.34.0 sentence-transformers>=2.2.0
 
 # Install other dependencies with timeout (split into batches for better caching)
+# python-multipart is required for FastAPI form data and file uploads
 RUN pip install --no-cache-dir --user \
     --default-timeout=300 \
     --retries=3 \
-    fastapi>=0.104.0 uvicorn[standard]>=0.24.0 pydantic>=2.0.0
+    fastapi>=0.104.0 uvicorn[standard]>=0.24.0 pydantic>=2.0.0 python-multipart>=0.0.6
 
 RUN pip install --no-cache-dir --user \
     --default-timeout=300 \
