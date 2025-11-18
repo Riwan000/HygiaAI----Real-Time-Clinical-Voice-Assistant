@@ -141,8 +141,19 @@ class TemporalClusteringService:
                 options=options
             )
             
+            logger.info(f"Retrieved {len(retrieved_results)} cases for temporal clustering")
+            
+            if len(retrieved_results) == 0:
+                logger.warning("No cases found in the specified time range")
+                return TemporalClusteringResult(
+                    clusters=[],
+                    time_granularity=time_granularity,
+                    total_cases_analyzed=0
+                )
+            
             if len(retrieved_results) < min_cluster_size:
-                logger.warning(f"Insufficient cases for clustering: {len(retrieved_results)}")
+                logger.warning(f"Insufficient cases for clustering: {len(retrieved_results)} < {min_cluster_size}")
+                # Still return result with total_cases_analyzed for frontend to display
                 return TemporalClusteringResult(
                     clusters=[],
                     time_granularity=time_granularity,
@@ -257,7 +268,15 @@ class TemporalClusteringService:
         min_cluster_size: int
     ) -> List[TemporalCluster]:
         """Cluster cases within a time window"""
-        if not SKLEARN_AVAILABLE or len(cases) < min_cluster_size:
+        if not SKLEARN_AVAILABLE:
+            logger.warning(f"scikit-learn not available, cannot cluster cases in window {window_key}")
+            # Return a single cluster with all cases if sklearn unavailable
+            if len(cases) >= min_cluster_size:
+                return self._create_single_cluster_from_cases(cases, window_key)
+            return []
+        
+        if len(cases) < min_cluster_size:
+            logger.debug(f"Insufficient cases in window {window_key}: {len(cases)} < {min_cluster_size}")
             return []
         
         try:
@@ -267,12 +286,26 @@ class TemporalClusteringService:
             
             for case in cases:
                 # Try to get embedding from case
-                vector = case.get("vector") or case.get("embedding")
-                if vector and len(vector) == 768:
+                # Check multiple locations for embeddings
+                vector = None
+                if isinstance(case, dict):
+                    vector = (case.get("vector") or 
+                             case.get("embedding") or
+                             case.get("case_data", {}).get("vector") or
+                             case.get("case_data", {}).get("embedding"))
+                
+                if vector and isinstance(vector, list) and len(vector) > 0:
+                    # Accept any size embedding (not just 768)
                     embeddings.append(vector)
-                    case_ids.append(case.get("case_id") or case.get("id", ""))
+                    case_ids.append(case.get("case_id") or case.get("id") or case.get("case_data", {}).get("case_id", ""))
+            
+            logger.debug(f"Extracted {len(embeddings)} embeddings from {len(cases)} cases in window {window_key}")
             
             if len(embeddings) < min_cluster_size:
+                logger.warning(f"Insufficient embeddings for clustering in window {window_key}: {len(embeddings)} < {min_cluster_size}")
+                # If we have cases but no embeddings, create a single cluster
+                if len(cases) >= min_cluster_size:
+                    return self._create_single_cluster_from_cases(cases, window_key)
                 return []
             
             # Normalize embeddings
@@ -396,4 +429,73 @@ class TemporalClusteringService:
                 insights.append(insight)
         
         return insights
+    
+    def _create_single_cluster_from_cases(
+        self,
+        cases: List[Dict[str, Any]],
+        window_key: str
+    ) -> List[TemporalCluster]:
+        """Create a single cluster from cases when clustering is not possible"""
+        try:
+            symptoms = []
+            diagnoses = []
+            locations = []
+            timestamps = []
+            case_ids = []
+            
+            for case in cases:
+                case_id = case.get("case_id") or case.get("id") or case.get("case_data", {}).get("case_id", "")
+                if case_id:
+                    case_ids.append(case_id)
+                
+                # Extract data
+                if isinstance(case, dict):
+                    payload = case.get("payload", {}) or case.get("case_data", {}).get("payload", {})
+                    metadata = payload.get("case_metadata", {})
+                    
+                    # Extract diagnosis
+                    diagnosis = metadata.get("diagnosis")
+                    if diagnosis:
+                        diagnoses.append(diagnosis)
+                    
+                    # Extract location
+                    location = metadata.get("region")
+                    if location:
+                        locations.append(location)
+                    
+                    # Extract timestamp
+                    ts = payload.get("timestamp") or case.get("timestamp")
+                    if ts:
+                        try:
+                            timestamps.append(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+                        except:
+                            pass
+            
+            time_window = (
+                min(timestamps) if timestamps else datetime.now(timezone.utc),
+                max(timestamps) if timestamps else datetime.now(timezone.utc)
+            )
+            
+            cluster = TemporalCluster(
+                cluster_id=0,
+                case_ids=case_ids,
+                time_window=time_window,
+                symptoms=list(set(symptoms)),
+                diagnoses=list(set(diagnoses)),
+                locations=list(set(locations)),
+                size=len(cases),
+                density_score=1.0,
+                characteristics={
+                    "window": window_key,
+                    "symptom_count": len(set(symptoms)),
+                    "diagnosis_count": len(set(diagnoses)),
+                    "note": "Single cluster (clustering unavailable)"
+                }
+            )
+            
+            return [cluster]
+            
+        except Exception as e:
+            logger.error(f"Error creating single cluster from cases: {e}")
+            return []
 

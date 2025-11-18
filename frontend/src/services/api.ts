@@ -88,9 +88,11 @@ const createAxiosInstance = (): AxiosInstance => {
         // More detailed error message
         let errorMessage = 'Network error: Unable to connect to server';
         if (error.code === 'ECONNREFUSED') {
-          errorMessage = 'Connection refused. Please ensure the backend server is running on http://localhost:8000';
+          errorMessage = 'Connection refused. Please ensure the backend server is running.';
         } else if (error.code === 'ETIMEDOUT') {
           errorMessage = 'Request timed out. The server may be slow or unresponsive.';
+        } else if (error.code === 'ECONNRESET' || error.message?.includes('ERR_CONNECTION_RESET')) {
+          errorMessage = 'Connection reset by server. The request may have timed out or the server restarted. Please try again.';
         } else if (error.message) {
           errorMessage = `Network error: ${error.message}`;
         }

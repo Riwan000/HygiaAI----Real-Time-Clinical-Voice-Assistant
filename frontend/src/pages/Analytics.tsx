@@ -80,14 +80,22 @@ export function Analytics() {
         start_time: startTime,
         end_time: endTime,
         region: filters.region,
-        min_cluster_size: 3,
+        min_cluster_size: 1, // Lower threshold to show more clusters
       });
 
       if (clusteringResponse.success && clusteringResponse.data) {
         console.log('Clustering response:', clusteringResponse.data);
+        console.log(`Total cases analyzed: ${clusteringResponse.data.total_cases_analyzed || 0}`);
+        console.log(`Clusters found: ${clusteringResponse.data.clusters?.length || 0}`);
+        
+        // Check if we have cases but no clusters
+        if (clusteringResponse.data.total_cases_analyzed > 0 && 
+            (!clusteringResponse.data.clusters || clusteringResponse.data.clusters.length === 0)) {
+          console.warn('Cases found but no clusters generated. This may indicate insufficient similarity or missing embeddings.');
+        }
         
         // Convert clusters to ClusterData format
-        const clusters: ClusterData[] = clusteringResponse.data.clusters.map((cluster: any) => {
+        const clusters: ClusterData[] = (clusteringResponse.data.clusters || []).map((cluster: any) => {
           // Handle time_window - API returns {start, end} object
           const timeWindow = cluster.time_window;
           const timeWindowStr = typeof timeWindow === 'string' 
@@ -143,6 +151,13 @@ export function Analytics() {
         // Set empty arrays if no data
         setClusterData([]);
         setTrendData([]);
+        
+        // Show helpful message if there's an error
+        if (clusteringResponse.error) {
+          setError(`Failed to fetch analytics: ${clusteringResponse.error}`);
+        } else if (clusteringResponse.data?.total_cases_analyzed === 0) {
+          setError('No cases found in the selected time range. Try adjusting the date range or ensure patient data exists.');
+        }
       }
 
       // Fetch regional analytics if region is selected
