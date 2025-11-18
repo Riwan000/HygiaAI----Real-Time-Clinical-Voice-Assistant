@@ -306,10 +306,18 @@ export class ClinicalMemoryService {
    * Recall similar cases
    */
   static async recallSimilarCases(request: RecallRequest): Promise<ApiResponse<RecallResponse>> {
+    // Use longer timeout for SOAP notes listing (empty query uses scroll API)
+    const timeout = request.query_text === '' ? 120000 : 60000; // 2 min for scroll, 1 min for semantic search
+    
     return apiRequest<RecallResponse>({
       method: 'POST',
       url: API_ENDPOINTS.CLINICAL_MEMORY.RECALL_CASE,
       data: request,
+      timeout: timeout,
+      retry: {
+        attempts: 2,
+        delay: 1000,
+      },
     });
   }
 
