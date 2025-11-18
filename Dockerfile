@@ -1,25 +1,6 @@
 # Multi-stage Dockerfile optimized for Railway deployment
-# Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /app/frontend
-
-# Copy frontend package files
-COPY frontend/package*.json ./
-
-# Install frontend dependencies
-RUN npm ci
-
-# Copy frontend source
-COPY frontend/ .
-
-# Build frontend (use production mode)
-# Note: VITE_API_BASE_URL will be set at runtime via environment variable
-# For build time, we use a placeholder that will be replaced
-RUN npm run build
-
-# Stage 2: Build Python dependencies
-FROM python:3.11-slim AS python-builder
+# Stage 1: Build dependencies
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -32,27 +13,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements
 COPY requirements.txt .
 
-# Upgrade pip first
-RUN pip install --no-cache-dir --user --upgrade pip setuptools wheel
-
-# Install PyTorch CPU-only versions separately for better reliability
-# Split into separate RUN commands to avoid timeout issues and improve caching
+# Install Python dependencies with optimizations
+# Use CPU-only PyTorch to reduce image size significantly (from ~8GB to ~2GB)
 RUN pip install --no-cache-dir --user \
+    --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --user \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch==2.1.0+cpu
+    torch==2.1.0+cpu \
+    torchvision==0.16.0+cpu \
+    torchaudio==2.1.0+cpu && \
+    pip install --no-cache-dir --user \
+    -r requirements.txt
 
-RUN pip install --no-cache-dir --user \
-    --extra-index-url https://download.pytorch.org/whl/cpu \
-    torchvision==0.16.0+cpu
-
-# Install torchaudio only if needed (optional, can skip if not used)
-# Using sh -c to allow proper error handling
-RUN sh -c "pip install --no-cache-dir --user --extra-index-url https://download.pytorch.org/whl/cpu torchaudio==2.1.0+cpu || true"
-
-# Install other Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# Stage 3: Runtime image
+# Stage 2: Runtime image
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -64,18 +37,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Copy Python dependencies from builder
-COPY --from=python-builder /root/.local /root/.local
+COPY --from=builder /root/.local /root/.local
 
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH
 
-# Copy application files
+# Copy only necessary application files
 COPY src/ ./src/
 COPY config/ ./config/
 COPY run_server.py .
-
-# Copy built frontend from frontend-builder
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/logs /app/.cache

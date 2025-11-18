@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit --skipLibCheck || true && vite build",
-    "build:prod": "NODE_ENV=production tsc --noEmit --skipLibCheck || true && vite build --mode production",
+    "build": "tsc && vite build",
+    "build:prod": "NODE_ENV=production tsc && vite build --mode production",
     "build:analyze": "vite build --mode production && npx vite-bundle-visualizer",
     "preview": "vite preview",
     "preview:prod": "vite preview --mode production",

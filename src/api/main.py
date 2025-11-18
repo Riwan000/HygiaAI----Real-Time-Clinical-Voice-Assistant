@@ -6,11 +6,8 @@ Main entry point for the HygiaAI API server.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 import logging
 import os
-from pathlib import Path
 
 # Try to load environment variables from .env file (if exists)
 try:
@@ -147,46 +144,15 @@ async def health_check():
         "version": "1.0.0"
     }
 
-# Serve static files (frontend) if they exist
-frontend_dist_path = Path(__file__).parent.parent.parent / "frontend" / "dist"
-if frontend_dist_path.exists():
-    # Mount static files
-    app.mount("/assets", StaticFiles(directory=str(frontend_dist_path / "assets")), name="assets")
-    
-    # Serve index.html for all non-API routes (SPA routing)
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        """
-        Serve frontend files. If path doesn't exist, serve index.html for SPA routing.
-        API routes are handled by routers, so they won't reach here.
-        """
-        # Don't serve frontend for API routes
-        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("redoc") or full_path.startswith("openapi.json"):
-            return {"error": "Not found"}
-        
-        # Check if it's a file in dist
-        file_path = frontend_dist_path / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(str(file_path))
-        
-        # For SPA routing, serve index.html
-        index_path = frontend_dist_path / "index.html"
-        if index_path.exists():
-            return FileResponse(str(index_path))
-        
-        return {"error": "Not found"}
-else:
-    # If frontend not built, just return API info
-    @app.get("/")
-    async def root():
-        """Root endpoint"""
-        return {
-            "message": "HygiaAI Clinical Voice Assistant API",
-            "version": "1.0.0",
-            "docs": "/docs",
-            "health": "/health",
-            "note": "Frontend not built. Build frontend and place dist/ in frontend/dist/"
-        }
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "HygiaAI Clinical Voice Assistant API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
 
 
 if __name__ == "__main__":
