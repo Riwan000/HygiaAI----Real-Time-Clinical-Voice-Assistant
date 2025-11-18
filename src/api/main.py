@@ -20,63 +20,92 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import routers lazily to avoid heavy initialization during startup
-# This allows the health check to respond quickly even if some routers fail to import
-def import_routers():
-    """Lazy import of routers - called after app creation"""
-    routers = {}
+# Import lifespan context manager
+from contextlib import asynccontextmanager
+
+_routers_loaded = False
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load routers after app startup to avoid blocking health checks"""
+    global _routers_loaded
     
-    try:
-        from .visualization_api import router as visualization_router
-        routers['visualization'] = visualization_router
-    except Exception as e:
-        logger.warning(f"Failed to import visualization_router: {e}")
-        routers['visualization'] = None
-
-    try:
-        from .ehr_api import router as ehr_router
-        routers['ehr'] = ehr_router
-    except Exception as e:
-        logger.warning(f"Failed to import ehr_router: {e}")
-        routers['ehr'] = None
-
-    try:
-        from .compliance_api import router as compliance_router
-        routers['compliance'] = compliance_router
-    except Exception as e:
-        logger.warning(f"Failed to import compliance_router: {e}")
-        routers['compliance'] = None
-
-    try:
-        from .clinical_memory_api import router as clinical_memory_router
-        routers['clinical_memory'] = clinical_memory_router
-    except Exception as e:
-        logger.warning(f"Failed to import clinical_memory_router: {e}")
-        routers['clinical_memory'] = None
-
-    try:
-        from .federated_api import router as federated_router
-        routers['federated'] = federated_router
-    except Exception as e:
-        logger.warning(f"Failed to import federated_router: {e}")
-        routers['federated'] = None
-
-    try:
-        from .transcription_ws_api import router as transcription_ws_router
-        routers['transcription'] = transcription_ws_router
-    except Exception as e:
-        logger.warning(f"Failed to import transcription_ws_router: {e}")
-        routers['transcription'] = None
+    # App startup - load routers in background
+    logger.info("Starting application...")
     
-    return routers
+    def load_routers():
+        """Load routers synchronously (can take time)"""
+        global _routers_loaded
+        try:
+            routers_loaded = []
+            
+            try:
+                from .visualization_api import router as visualization_router
+                app.include_router(visualization_router)
+                routers_loaded.append('visualization')
+            except Exception as e:
+                logger.warning(f"Failed to import visualization_router: {e}")
+            
+            try:
+                from .ehr_api import router as ehr_router
+                app.include_router(ehr_router)
+                routers_loaded.append('ehr')
+            except Exception as e:
+                logger.warning(f"Failed to import ehr_router: {e}")
+            
+            try:
+                from .compliance_api import router as compliance_router
+                app.include_router(compliance_router)
+                routers_loaded.append('compliance')
+            except Exception as e:
+                logger.warning(f"Failed to import compliance_router: {e}")
+            
+            try:
+                from .clinical_memory_api import router as clinical_memory_router
+                app.include_router(clinical_memory_router)
+                routers_loaded.append('clinical_memory')
+            except Exception as e:
+                logger.warning(f"Failed to import clinical_memory_router: {e}")
+            
+            try:
+                from .federated_api import router as federated_router
+                app.include_router(federated_router)
+                routers_loaded.append('federated')
+            except Exception as e:
+                logger.warning(f"Failed to import federated_router: {e}")
+            
+            try:
+                from .transcription_ws_api import router as transcription_ws_router
+                app.include_router(transcription_ws_router)
+                routers_loaded.append('transcription')
+            except Exception as e:
+                logger.warning(f"Failed to import transcription_ws_router: {e}")
+            
+            _routers_loaded = True
+            logger.info(f"Routers loaded successfully: {', '.join(routers_loaded)}")
+        except Exception as e:
+            logger.error(f"Error loading routers: {e}", exc_info=True)
+            # Continue anyway - health check should still work
+    
+    # Load routers in background thread to avoid blocking startup
+    import threading
+    router_thread = threading.Thread(target=load_routers, daemon=True)
+    router_thread.start()
+    
+    yield  # App is running
+    
+    # App shutdown
+    logger.info("Shutting down application...")
 
-# Create FastAPI app
+# Create FastAPI app with lifespan - routers will load AFTER startup
+# This ensures the health endpoint is available immediately
 app = FastAPI(
     title="HygiaAI Clinical Voice Assistant API",
     description="Real-time clinical voice assistant with transcription, entity extraction, RAG-based insights, and visualization",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -99,27 +128,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers lazily (after app creation to allow health check to work immediately)
-# Import routers in background to avoid blocking startup
-try:
-    routers = import_routers()
-    if routers.get('visualization'):
-        app.include_router(routers['visualization'])
-    if routers.get('ehr'):
-        app.include_router(routers['ehr'])
-    if routers.get('compliance'):
-        app.include_router(routers['compliance'])
-    if routers.get('clinical_memory'):
-        app.include_router(routers['clinical_memory'])
-    if routers.get('federated'):
-        app.include_router(routers['federated'])
-    if routers.get('transcription'):
-        app.include_router(routers['transcription'])
-    logger.info("All routers loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading routers: {e}", exc_info=True)
-    # Continue anyway - health check should still work
-
+# Define health endpoint IMMEDIATELY - before any router imports
+# This ensures Railway can verify health even if routers fail to load
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for Railway deployment
+    
+    This endpoint must respond quickly without dependencies on external services.
+    Railway uses this to verify the deployment is healthy.
+    """
+    return {
+        "status": "healthy",
+        "service": "HygiaAI API",
+        "version": "1.0.0"
+    }
 
 @app.get("/")
 async def root():
@@ -130,33 +153,6 @@ async def root():
         "docs": "/docs",
         "health": "/health"
     }
-
-
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint for Railway deployment
-    
-    This endpoint must respond quickly without dependencies on external services.
-    Railway uses this to verify the deployment is healthy.
-    """
-    try:
-        # Return immediately - don't check external services to avoid timeouts
-        return {
-            "status": "healthy",
-            "service": "HygiaAI API",
-            "version": "1.0.0"
-        }
-    except Exception as e:
-        # Even if there's an error, return 200 to prevent Railway from marking as unhealthy
-        # during startup when some modules might not be loaded yet
-        logger.warning(f"Health check warning: {e}")
-        return {
-            "status": "healthy",
-            "service": "HygiaAI API",
-            "version": "1.0.0",
-            "note": "Some services may still be initializing"
-        }
 
 
 if __name__ == "__main__":
