@@ -11,6 +11,9 @@ pydantic>=2.0.0
 # Vector database
 qdrant-client>=1.7.0
 
+# Encryption (for HIPAA compliance)
+cryptography>=41.0.0
+
 # ML/AI libraries
 # Note: PyTorch CPU-only version is installed in Dockerfile to reduce image size
 # For local development, install full torch: pip install torch
