@@ -147,14 +147,8 @@ async def health_check():
     Railway uses this to verify the deployment is healthy.
     Returns HTTP 200 status code explicitly for Railway healthchecks.
     """
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "healthy",
-            "service": "HygiaAI API",
-            "version": "1.0.0"
-        }
-    )
+    # Simple response for Railway healthcheck - must be fast!
+    return {"status": "ok"}
 
 @app.get("/")
 async def root():

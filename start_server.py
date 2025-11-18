@@ -17,21 +17,31 @@ def main():
     print(f"PATH: {os.getenv('PATH', '')}", file=sys.stderr)
     print(f"Working directory: {os.getcwd()}", file=sys.stderr)
     
-    # Verify uvicorn is available
+    # Verify uvicorn is available - check PATH first
+    print("Checking for uvicorn...", file=sys.stderr)
+    uvicorn_path = None
     try:
-        import uvicorn
-        print(f"uvicorn found: {uvicorn.__file__}", file=sys.stderr)
+        import shutil
+        uvicorn_path = shutil.which("uvicorn")
+        if uvicorn_path:
+            print(f"uvicorn found in PATH: {uvicorn_path}", file=sys.stderr)
+        else:
+            print("uvicorn not found in PATH, trying Python import...", file=sys.stderr)
+            import uvicorn
+            print(f"uvicorn found as Python module: {uvicorn.__file__}", file=sys.stderr)
     except ImportError:
         print("ERROR: uvicorn not found. Trying to import from .local", file=sys.stderr)
         # Try adding .local/bin to path
         local_bin = os.path.expanduser("~/.local/bin")
         if local_bin not in os.environ.get("PATH", ""):
             os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+            print(f"Added {local_bin} to PATH", file=sys.stderr)
         try:
             import uvicorn
             print(f"uvicorn found after path adjustment: {uvicorn.__file__}", file=sys.stderr)
         except ImportError:
             print("ERROR: uvicorn still not found", file=sys.stderr)
+            print("PATH:", os.environ.get("PATH", ""), file=sys.stderr)
             sys.exit(1)
     
     # Verify the app module can be imported
@@ -49,11 +59,14 @@ def main():
     print(f"Starting uvicorn server on port {port}...", file=sys.stderr)
     print(f"Server will listen on 0.0.0.0:{port}", file=sys.stderr)
     print(f"Health endpoint will be available at http://0.0.0.0:{port}/health", file=sys.stderr)
+    print("=" * 50, file=sys.stderr)
     sys.stderr.flush()
     
     # Use uvicorn.run directly instead of subprocess for better error handling
     # Ensure we bind to 0.0.0.0 to accept connections from Railway's healthcheck
     try:
+        print("Starting uvicorn...", file=sys.stderr)
+        sys.stderr.flush()
         uvicorn.run(
             "src.api.main:app",
             host="0.0.0.0",  # Must be 0.0.0.0 to accept Railway healthcheck connections
@@ -61,6 +74,9 @@ def main():
             log_level="info",
             access_log=True  # Enable access logs to see healthcheck requests
         )
+    except KeyboardInterrupt:
+        print("Server stopped by user", file=sys.stderr)
+        sys.exit(0)
     except Exception as e:
         print(f"ERROR: Failed to start uvicorn server: {e}", file=sys.stderr)
         import traceback

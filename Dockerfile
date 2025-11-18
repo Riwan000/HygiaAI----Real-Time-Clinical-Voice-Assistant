@@ -87,8 +87,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local
 
-# Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
+# Make sure scripts in .local are usable - CRITICAL for Railway
+# This ensures uvicorn and other pip --user installed scripts are found
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Copy only necessary application files
 COPY src/ ./src/
@@ -119,5 +120,7 @@ HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
 
 # Run the application (Railway provides $PORT via railway.json startCommand)
 # This CMD is a fallback - Railway will use startCommand from railway.json
-# Use Python startup script for better error handling and logging
+# Option A: Use startup script (better diagnostics)
 CMD ["python", "start_server.py"]
+# Option B: Direct uvicorn command (simpler, faster)
+# CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "${PORT:-8000}"]
