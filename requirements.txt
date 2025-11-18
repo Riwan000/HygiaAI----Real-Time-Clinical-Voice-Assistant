@@ -17,6 +17,8 @@ cryptography>=41.0.0
 # ML/AI libraries
 # Note: PyTorch CPU-only version is installed in Dockerfile to reduce image size
 # For local development, install full torch: pip install torch
+# IMPORTANT: transformers 4.35.0+ requires PyTorch >= 2.3.0
+# For PyTorch 2.2.0 compatibility, use transformers==4.34.0 (pinned in Dockerfile)
 transformers>=4.35.0
 sentence-transformers>=2.2.0
 # torch>=2.1.0  # Installed separately in Dockerfile as CPU-only version
