@@ -47,15 +47,25 @@ def main():
     
     # Start the server
     print(f"Starting uvicorn server on port {port}...", file=sys.stderr)
+    print(f"Server will listen on 0.0.0.0:{port}", file=sys.stderr)
+    print(f"Health endpoint will be available at http://0.0.0.0:{port}/health", file=sys.stderr)
     sys.stderr.flush()
     
     # Use uvicorn.run directly instead of subprocess for better error handling
-    uvicorn.run(
-        "src.api.main:app",
-        host="0.0.0.0",
-        port=int(port),
-        log_level="info"
-    )
+    # Ensure we bind to 0.0.0.0 to accept connections from Railway's healthcheck
+    try:
+        uvicorn.run(
+            "src.api.main:app",
+            host="0.0.0.0",  # Must be 0.0.0.0 to accept Railway healthcheck connections
+            port=int(port),
+            log_level="info",
+            access_log=True  # Enable access logs to see healthcheck requests
+        )
+    except Exception as e:
+        print(f"ERROR: Failed to start uvicorn server: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

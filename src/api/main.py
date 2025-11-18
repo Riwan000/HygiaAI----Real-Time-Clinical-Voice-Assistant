@@ -6,6 +6,7 @@ Main entry point for the HygiaAI API server.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import logging
 import os
 
@@ -29,6 +30,12 @@ _routers_loaded = False
 async def lifespan(app: FastAPI):
     """Load routers after app startup to avoid blocking health checks"""
     global _routers_loaded
+    
+    # App startup - log that the app is ready for healthchecks
+    logger.info("=" * 50)
+    logger.info("HygiaAI API Server Starting...")
+    logger.info("Health endpoint available at /health")
+    logger.info("=" * 50)
     
     # App startup - load routers in background
     logger.info("Starting application...")
@@ -130,6 +137,7 @@ app.add_middleware(
 
 # Define health endpoint IMMEDIATELY - before any router imports
 # This ensures Railway can verify health even if routers fail to load
+# Railway healthchecks come from healthcheck.railway.app hostname
 @app.get("/health")
 async def health_check():
     """
@@ -137,12 +145,16 @@ async def health_check():
     
     This endpoint must respond quickly without dependencies on external services.
     Railway uses this to verify the deployment is healthy.
+    Returns HTTP 200 status code explicitly for Railway healthchecks.
     """
-    return {
-        "status": "healthy",
-        "service": "HygiaAI API",
-        "version": "1.0.0"
-    }
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "healthy",
+            "service": "HygiaAI API",
+            "version": "1.0.0"
+        }
+    )
 
 @app.get("/")
 async def root():
