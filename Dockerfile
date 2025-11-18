@@ -36,27 +36,18 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user --upgrade pip setuptools wheel
 
 # Install PyTorch CPU-only versions separately for better reliability
-# Split into separate RUN commands to avoid timeout issues
+# Split into separate RUN commands to avoid timeout issues and improve caching
 RUN pip install --no-cache-dir --user \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch==2.1.0+cpu || \
-    (pip install --no-cache-dir --user --upgrade pip && \
-     pip install --no-cache-dir --user \
-     --extra-index-url https://download.pytorch.org/whl/cpu \
-     torch==2.1.0+cpu)
+    torch==2.1.0+cpu
 
 RUN pip install --no-cache-dir --user \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torchvision==0.16.0+cpu || \
-    (pip install --no-cache-dir --user --upgrade pip && \
-     pip install --no-cache-dir --user \
-     --extra-index-url https://download.pytorch.org/whl/cpu \
-     torchvision==0.16.0+cpu)
+    torchvision==0.16.0+cpu
 
 # Install torchaudio only if needed (optional, can skip if not used)
-RUN pip install --no-cache-dir --user \
-    --extra-index-url https://download.pytorch.org/whl/cpu \
-    torchaudio==2.1.0+cpu || echo "Warning: torchaudio installation failed, continuing..."
+# Using sh -c to allow proper error handling
+RUN sh -c "pip install --no-cache-dir --user --extra-index-url https://download.pytorch.org/whl/cpu torchaudio==2.1.0+cpu || true"
 
 # Install other Python dependencies
 RUN pip install --no-cache-dir --user -r requirements.txt
