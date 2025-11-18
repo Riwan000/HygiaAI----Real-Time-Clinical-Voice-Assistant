@@ -39,6 +39,13 @@ RUN pip install --no-cache-dir --user \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torchaudio==2.2.0+cpu
 
+# Install NumPy first (pin to <2.0 for PyTorch 2.2.0 compatibility)
+# PyTorch 2.2.0 was compiled with NumPy 1.x and may have issues with NumPy 2.x
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    "numpy<2.0"
+
 # Install transformers and sentence-transformers (depend on torch)
 # Pin transformers to 4.34.0 for compatibility with PyTorch 2.2.0
 RUN pip install --no-cache-dir --user \

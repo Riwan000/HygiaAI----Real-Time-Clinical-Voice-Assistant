@@ -7,6 +7,14 @@ import sys
 import os
 import subprocess
 
+# Import uvicorn at module level to avoid UnboundLocalError
+# This ensures uvicorn is available throughout the module
+try:
+    import uvicorn
+except ImportError:
+    # Will be handled in main() with better error messages
+    uvicorn = None
+
 def main():
     # Set up logging to stderr (Railway captures this)
     port = os.getenv("PORT", "8000")
@@ -17,8 +25,10 @@ def main():
     print(f"PATH: {os.getenv('PATH', '')}", file=sys.stderr)
     print(f"Working directory: {os.getcwd()}", file=sys.stderr)
     
-    # Verify uvicorn is available - check PATH first, then import
+    # Verify uvicorn is available - check PATH first, then verify import
     print("Checking for uvicorn...", file=sys.stderr)
+    global uvicorn  # Use global uvicorn imported at module level
+    
     try:
         import shutil
         uvicorn_path = shutil.which("uvicorn")
@@ -27,11 +37,8 @@ def main():
     except Exception:
         pass  # shutil might not be available, but that's okay
     
-    # Always import uvicorn module (required for uvicorn.run())
-    try:
-        import uvicorn
-        print(f"uvicorn module imported: {uvicorn.__file__}", file=sys.stderr)
-    except ImportError:
+    # Verify uvicorn module is imported (should be from module level)
+    if uvicorn is None:
         print("ERROR: uvicorn module not found. Trying to import from .local", file=sys.stderr)
         # Try adding .local/bin to path
         local_bin = os.path.expanduser("~/.local/bin")
@@ -39,12 +46,15 @@ def main():
             os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
             print(f"Added {local_bin} to PATH", file=sys.stderr)
         try:
-            import uvicorn
+            import uvicorn as uvicorn_module
+            uvicorn = uvicorn_module  # Update global variable
             print(f"uvicorn found after path adjustment: {uvicorn.__file__}", file=sys.stderr)
         except ImportError:
             print("ERROR: uvicorn still not found", file=sys.stderr)
             print("PATH:", os.environ.get("PATH", ""), file=sys.stderr)
             sys.exit(1)
+    else:
+        print(f"uvicorn module available: {uvicorn.__file__}", file=sys.stderr)
     
     # Verify python-multipart is installed (required for FastAPI form data)
     print("Checking for python-multipart...", file=sys.stderr)
