@@ -80,6 +80,14 @@ export default defineConfig({
     target: 'esnext',
     reportCompressedSize: true,
     chunkSizeWarningLimit: 1000,
+    // Generate manifest for cache busting
+    manifest: true,
+    // Ensure unique filenames with hash
+    rollupOptions: {
+      output: {
+        // Add build timestamp to filenames for cache busting
+        entryFileNames: `assets/js/[name]-[hash]-${Date.now()}.js`,
+        chunkFileNames: `assets/js/[name]-[hash]-${Date.now()}.js`,
     commonjsOptions: {
       include: [/node_modules/],
       transformMixedEsModules: true,
@@ -104,7 +112,7 @@ export default defineConfig({
             return 'vendor';
           }
         },
-        // Optimize chunk file names
+        // Optimize chunk file names with hash for cache busting
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
