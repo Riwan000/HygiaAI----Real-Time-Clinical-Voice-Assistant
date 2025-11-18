@@ -46,7 +46,7 @@ export function CaseViewer() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const [similarityScores, setSimilarityScores] = useState<Record<string, number>>({});
+  const [similarityScores, setSimilarityScores] = useState<Record<string, number | null | undefined>>({});
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [comparisonCase, setComparisonCase] = useState<Case | null>(null);
   const [showComparison, setShowComparison] = useState(false);
@@ -85,10 +85,10 @@ export function CaseViewer() {
           similarity_score: item.similarity_score,
         }));
 
-        // Store similarity scores
-        const scores: Record<string, number> = {};
+        // Store similarity scores (can be null/undefined when no query)
+        const scores: Record<string, number | null | undefined> = {};
         recallData.similar_cases.forEach((item) => {
-          scores[item.case_id] = item.similarity_score;
+          scores[item.case_id] = item.similarity_score ?? null;
         });
         setSimilarityScores(scores);
 

@@ -1027,10 +1027,13 @@ async def recall_similar_cases(request: RecallRequest):
             if soap_note and "soap_note" not in case_data_dict:
                 case_data_dict["soap_note"] = soap_note
             
+            # Set similarity_score to None if score is 0.0 and there's no query (indicates scroll API was used)
+            similarity_score = result.score if (result.score and result.score > 0) or request.query_text else None
+            
             similar_cases.append({
                 "case_id": result.case_id,
                 "patient_id": patient_id,  # Include patient_id at top level for easy access
-                "similarity_score": result.score,
+                "similarity_score": similarity_score,  # None when no query, actual score when query exists
                 "semantic_score": result.semantic_score,
                 "keyword_score": result.keyword_score,
                 "metadata": result.metadata.dict() if result.metadata and hasattr(result.metadata, 'dict') else (result.metadata.model_dump() if result.metadata and hasattr(result.metadata, 'model_dump') else None),

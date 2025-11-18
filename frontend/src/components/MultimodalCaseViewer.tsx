@@ -25,7 +25,7 @@ import { clsx } from '../utils/clsx';
 
 interface MultimodalCaseViewerProps {
   cases: Case[];
-  similarityScores?: Record<string, number>;
+  similarityScores?: Record<string, number | null | undefined>;
   isLoading?: boolean;
   onCaseSelect?: (caseData: Case) => void;
   onCompare?: (case1: Case, case2: Case) => void;
@@ -48,10 +48,20 @@ function SimilarityVisualization({
   similarityScores,
 }: {
   cases: Case[];
-  similarityScores: Record<string, number>;
+  similarityScores: Record<string, number | null | undefined>;
 }) {
-  const maxScore = Math.max(...Object.values(similarityScores), 0);
-  const minScore = Math.min(...Object.values(similarityScores), 1);
+  // Filter out null/undefined scores and get valid scores
+  const validScores = Object.values(similarityScores).filter(
+    (score): score is number => score !== null && score !== undefined && score > 0
+  );
+  
+  // Don't show visualization if no valid scores (no query was provided)
+  if (validScores.length === 0) {
+    return null;
+  }
+  
+  const maxScore = Math.max(...validScores, 0);
+  const minScore = Math.min(...validScores, 1);
 
   const getColor = (score: number) => {
     const normalized = (score - minScore) / (maxScore - minScore || 1);
@@ -68,11 +78,15 @@ function SimilarityVisualization({
       </h3>
       <div className="space-y-2">
         {cases.slice(0, 10).map((caseData) => {
-          const score = similarityScores[caseData.id] || caseData.similarity_score || 0;
+          const score = similarityScores[caseData.id] ?? caseData.similarity_score ?? null;
+          // Skip cases with no similarity score
+          if (score === null || score === undefined || score === 0) {
+            return null;
+          }
           return (
             <div key={caseData.id} className="flex items-center gap-2">
               <span className="text-xs text-slate dark:text-white/70 w-20 truncate">
-                Case {caseData.id}
+                Case {caseData.id.slice(0, 8)}...
               </span>
               <div className="flex-1 h-4 bg-slate/20 dark:bg-white/10 rounded-full overflow-hidden">
                 <div
@@ -424,14 +438,14 @@ export function MultimodalCaseViewer({
   return (
     <div className={clsx('space-y-6', className)}>
       {/* Similarity Visualization */}
-      {showSimilarityVisualization && Object.keys(similarityScores).length > 0 && (
+      {showSimilarityVisualization && (
         <SimilarityVisualization cases={cases} similarityScores={similarityScores} />
       )}
 
       {/* Cases Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {cases.map((caseData) => {
-          const score = similarityScores[caseData.id] || caseData.similarity_score;
+          const score = similarityScores[caseData.id] ?? caseData.similarity_score ?? undefined;
           return (
             <CaseCard
               key={caseData.id}

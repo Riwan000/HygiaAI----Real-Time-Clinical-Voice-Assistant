@@ -329,7 +329,7 @@ class CaseRetriever:
             for point in scroll_result[0]:  # scroll_result is (points, next_page_offset)
                 results.append({
                     "id": point.id,
-                    "score": 1.0,  # No similarity score for scroll
+                    "score": None,  # No similarity score for scroll (no query to compare against)
                     "payload": point.payload or {}
                 })
             
@@ -499,9 +499,13 @@ class CaseRetriever:
                 }
             
             # Create retrieval result
+            # Handle None scores (from scroll API when no query)
+            raw_score = result.get("score")
+            score = raw_score if raw_score is not None else 0.0
+            
             retrieval_result = RetrievalResult(
                 case_id=result.get("id", ""),
-                score=result.get("score", 0.0),
+                score=score,
                 semantic_score=result.get("semantic_score"),
                 keyword_score=result.get("keyword_score"),
                 combined_score=result.get("combined_score"),
