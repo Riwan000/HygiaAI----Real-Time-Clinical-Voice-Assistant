@@ -8,9 +8,10 @@ import { useState } from 'react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { FileUpload } from '../components/FileUpload';
 import { Loading } from '../components/Loading';
+import { SOAPNoteViewer } from '../components/SOAPNoteViewer';
 import { ClinicalMemoryService, type IngestRequest } from '../services/clinicalMemoryService';
-import type { UploadedFile } from '../types';
-import { CheckCircleIcon, ExclamationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import type { UploadedFile, SOAPNote } from '../types';
+import { CheckCircleIcon, ExclamationCircleIcon, XMarkIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { clsx } from '../utils/clsx';
 
 export function MultimodalInput() {
@@ -423,13 +424,50 @@ export function MultimodalInput() {
           </div>
         )}
 
+        {/* SOAP Note Display */}
+        {Array.from(uploadResults.values()).map((result, idx) => {
+          const soapNote = result?.soap_note;
+          if (!soapNote) return null;
+
+          return (
+            <div key={`soap-${idx}`} className="bg-white dark:bg-[#1E293B] rounded-2xl shadow-sm border border-slate/20 dark:border-[#475569]/30 p-6 mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-[#1E3A8A] dark:text-white" style={{ fontWeight: 600 }}>
+                  <DocumentTextIcon className="h-5 w-5 inline-block mr-2" />
+                  SOAP Report
+                </h2>
+                <span className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
+                  Generated & Saved
+                </span>
+              </div>
+              <SOAPNoteViewer
+                soapNote={soapNote as SOAPNote}
+                patientInfo={{
+                  id: patientId,
+                  age: ageGroup,
+                }}
+                caseMetadata={{
+                  age_group: ageGroup,
+                  region: region,
+                  comorbidities: comorbidities,
+                  diagnosis: diagnosis,
+                  outcome: outcome,
+                }}
+                editable={false}
+                showVersionHistory={false}
+                showAnnotations={false}
+              />
+            </div>
+          );
+        })}
+
         {/* RAG Suggestions Display */}
         {Array.from(uploadResults.values()).map((result, idx) => {
           const suggestions = result?.rag_suggestions;
           if (!suggestions || suggestions.error) return null;
 
           return (
-            <div key={idx} className="bg-white dark:bg-[#1E293B] rounded-2xl shadow-sm border border-slate/20 dark:border-[#475569]/30 p-6 mt-6">
+            <div key={`suggestions-${idx}`} className="bg-white dark:bg-[#1E293B] rounded-2xl shadow-sm border border-slate/20 dark:border-[#475569]/30 p-6 mt-6">
               <h2 className="text-lg font-semibold text-[#1E3A8A] dark:text-white mb-4" style={{ fontWeight: 600 }}>
                 🤖 AI Clinical Suggestions
               </h2>

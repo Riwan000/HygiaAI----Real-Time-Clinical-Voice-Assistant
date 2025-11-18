@@ -256,8 +256,22 @@ export function Timeline() {
         console.log(`Created ${events.length} timeline events from ${patientCases.length} cases`);
         console.log(`Created ${metrics.length} trend metrics`);
 
-        setTimelineEvents(events);
-        setTrendMetrics(metrics);
+        // Sort events chronologically by timestamp (oldest first)
+        const sortedEvents = [...events].sort((a, b) => {
+          const dateA = new Date(a.timestamp).getTime();
+          const dateB = new Date(b.timestamp).getTime();
+          return dateA - dateB; // Ascending order (oldest first)
+        });
+
+        // Sort metrics chronologically as well
+        const sortedMetrics = [...metrics].sort((a, b) => {
+          const dateA = new Date(a.date).getTime();
+          const dateB = new Date(b.date).getTime();
+          return dateA - dateB; // Ascending order (oldest first)
+        });
+
+        setTimelineEvents(sortedEvents);
+        setTrendMetrics(sortedMetrics);
         
         // Clear error if we have events
         if (events.length > 0) {

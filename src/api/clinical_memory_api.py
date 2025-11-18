@@ -178,6 +178,7 @@ class IngestResponse(BaseModel):
     modalities_processed: List[Dict[str, Any]]
     soap_generated: bool
     message: str
+    soap_note: Optional[Dict[str, Any]] = Field(None, description="Generated SOAP note with S, O, A, P sections")
     rag_suggestions: Optional[Dict[str, Any]] = Field(None, description="RAG-based clinical suggestions and insights")
 
 
@@ -766,6 +767,11 @@ Generated: {datetime.now(timezone.utc).isoformat()}
                     "message": str(rag_error)
                 }
         
+        # Extract SOAP note from ingestion result if available
+        soap_note = None
+        if result["status"] == "success":
+            soap_note = result["metadata"].get("soap_note")
+        
         return IngestResponse(
             status=result["status"],
             case_id=result["case_id"],
@@ -773,6 +779,7 @@ Generated: {datetime.now(timezone.utc).isoformat()}
             modalities_processed=result["metadata"].get("modalities_processed", []),
             soap_generated=result["metadata"].get("soap_generated", False),
             message="Case ingested successfully" if result["status"] == "success" else result.get("error", "Unknown error"),
+            soap_note=soap_note,
             rag_suggestions=rag_suggestions
         )
         
@@ -1008,6 +1015,39 @@ async def recall_similar_cases(request: RecallRequest):
             # For images, we'd need to generate CLIP embedding
             # For now, return error if image search not fully implemented
             raise HTTPException(status_code=501, detail="Image-based search not yet fully implemented")
+        
+        # Sort results by timestamp (chronological order) when patient_id is provided and no query_text
+        # This ensures timeline cases are in the correct order as entered
+        if request.patient_id and not request.query_text:
+            try:
+                def get_timestamp(result):
+                    """Extract timestamp from result for sorting"""
+                    try:
+                        if result.metadata and hasattr(result.metadata, 'timestamp'):
+                            ts = result.metadata.timestamp
+                        elif result.metadata and isinstance(result.metadata, dict):
+                            ts = result.metadata.get('timestamp')
+                        else:
+                            # Try to get from case_data payload
+                            if result.case_data and isinstance(result.case_data, dict):
+                                ts = result.case_data.get('timestamp')
+                            else:
+                                return datetime.min.replace(tzinfo=timezone.utc)
+                        
+                        if ts:
+                            if isinstance(ts, str):
+                                return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                            elif isinstance(ts, datetime):
+                                return ts
+                        return datetime.min.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        return datetime.min.replace(tzinfo=timezone.utc)
+                
+                # Sort by timestamp ascending (oldest first)
+                results = sorted(results, key=get_timestamp)
+                logger.info(f"Sorted {len(results)} cases chronologically for patient {request.patient_id}")
+            except Exception as sort_error:
+                logger.warning(f"Error sorting cases by timestamp: {sort_error}, returning unsorted")
         
         # Format results
         similar_cases = []

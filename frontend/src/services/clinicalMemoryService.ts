@@ -50,6 +50,14 @@ export type IngestResponse = {
   }>;
   soap_generated: boolean;
   message: string;
+  soap_note?: {
+    subjective: string;
+    objective: string;
+    assessment: string;
+    plan: string;
+    patient_info?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
   rag_suggestions?: {
     differential_diagnoses?: Array<{ diagnosis: string; confidence: string | number }>;
     recommendations?: Array<{

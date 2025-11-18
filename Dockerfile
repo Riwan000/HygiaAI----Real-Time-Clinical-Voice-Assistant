@@ -10,20 +10,68 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade pip, setuptools, wheel first (better caching)
+RUN pip install --no-cache-dir --user --upgrade pip setuptools wheel
+
 # Copy requirements
 COPY requirements.txt .
 
-# Install Python dependencies with optimizations
-# Use CPU-only PyTorch to reduce image size significantly (from ~8GB to ~2GB)
+# Install PyTorch CPU-only versions first (largest packages, better caching)
+# Split into individual packages for better error handling and caching
 RUN pip install --no-cache-dir --user \
-    --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir --user \
+    --default-timeout=600 \
+    --retries=5 \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch==2.1.0+cpu \
-    torchvision==0.16.0+cpu \
-    torchaudio==2.1.0+cpu && \
-    pip install --no-cache-dir --user \
-    -r requirements.txt
+    torch==2.1.0+cpu
+
+RUN pip install --no-cache-dir --user \
+    --default-timeout=600 \
+    --retries=5 \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torchvision==0.16.0+cpu
+
+RUN pip install --no-cache-dir --user \
+    --default-timeout=600 \
+    --retries=5 \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torchaudio==2.1.0+cpu
+
+# Install transformers and sentence-transformers (depend on torch)
+RUN pip install --no-cache-dir --user \
+    --default-timeout=600 \
+    --retries=5 \
+    transformers>=4.35.0 sentence-transformers>=2.2.0
+
+# Install other dependencies with timeout (split into batches for better caching)
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    fastapi>=0.104.0 uvicorn[standard]>=0.24.0 pydantic>=2.0.0
+
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    qdrant-client>=1.7.0 python-dotenv>=1.0.0
+
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    reportlab>=4.0.0 python-docx>=1.1.0 PyPDF2>=3.0.0 beautifulsoup4>=4.12.0 lxml>=4.9.0
+
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    deepgram-sdk>=5.3.0 google-generativeai>=0.3.0
+
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    python-socketio websockets requests assemblyai
+
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries=3 \
+    pytest>=7.4.0 pytest-asyncio>=0.21.0 httpx>=0.24.0
 
 # Stage 2: Runtime image
 FROM python:3.11-slim

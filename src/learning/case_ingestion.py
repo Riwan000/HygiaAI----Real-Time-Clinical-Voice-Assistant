@@ -111,6 +111,7 @@ class CaseIngestionOrchestrator:
             }
             
             # Process each modality
+            soap_note_data = None
             for modality_name, modality in case.modalities.items():
                 try:
                     if modality.modality_type == "text":
@@ -127,6 +128,9 @@ class CaseIngestionOrchestrator:
                         })
                         if result.get("soap_generated"):
                             ingestion_metadata["soap_generated"] = True
+                            # Store SOAP note data for return
+                            if result.get("soap_note"):
+                                soap_note_data = result.get("soap_note")
                     
                     elif modality.modality_type == "image":
                         result = self._ingest_image_modality(
@@ -164,6 +168,10 @@ class CaseIngestionOrchestrator:
             
             logger.info(f"Successfully ingested case {case.case_id}: {len(point_ids)} points stored")
             
+            # Include SOAP note in metadata if generated
+            if soap_note_data:
+                ingestion_metadata["soap_note"] = soap_note_data
+            
             return {
                 "status": "success",
                 "case_id": case.case_id,
@@ -189,13 +197,14 @@ class CaseIngestionOrchestrator:
         """Ingest text modality (transcript, SOAP note, etc.)"""
         point_ids = []
         soap_generated = False
+        soap_note_dict = None
         
         content = modality.content
         transcript = content.get("transcript") or content.get("text", "")
         
         if not transcript:
             logger.warning("No transcript found in text modality")
-            return {"point_ids": [], "soap_generated": False}
+            return {"point_ids": [], "soap_generated": False, "soap_note": None}
         
         # Generate embedding
         embedding = self.text_embedder.generate_embedding(transcript)
@@ -213,6 +222,15 @@ class CaseIngestionOrchestrator:
                     }
                 )
                 soap_generated = True
+                # Convert SOAP note to dictionary for return
+                soap_note_dict = {
+                    "subjective": soap_note.subjective,
+                    "objective": soap_note.objective,
+                    "assessment": soap_note.assessment,
+                    "plan": soap_note.plan,
+                    "patient_info": soap_note.patient_info if hasattr(soap_note, 'patient_info') else None,
+                    "metadata": soap_note.metadata if hasattr(soap_note, 'metadata') else {}
+                }
             except Exception as e:
                 logger.warning(f"Error generating SOAP note: {e}")
         
@@ -249,7 +267,7 @@ class CaseIngestionOrchestrator:
         except Exception as e:
             logger.error(f"Error storing text modality: {e}")
         
-        return {"point_ids": point_ids, "soap_generated": soap_generated}
+        return {"point_ids": point_ids, "soap_generated": soap_generated, "soap_note": soap_note_dict}
     
     def _ingest_image_modality(
         self,
