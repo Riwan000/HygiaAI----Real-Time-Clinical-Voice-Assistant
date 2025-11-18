@@ -17,24 +17,25 @@ RUN pip install --no-cache-dir --user --upgrade pip setuptools wheel
 COPY requirements.txt .
 
 # Install PyTorch CPU-only versions first (largest packages, better caching)
+# Using PyTorch 2.2.0+ for compatibility with transformers 4.35.0+
 # Split into individual packages for better error handling and caching
 RUN pip install --no-cache-dir --user \
     --default-timeout=600 \
     --retries=5 \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch==2.1.0+cpu
+    torch==2.2.0+cpu
 
 RUN pip install --no-cache-dir --user \
     --default-timeout=600 \
     --retries=5 \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torchvision==0.16.0+cpu
+    torchvision==0.17.0+cpu
 
 RUN pip install --no-cache-dir --user \
     --default-timeout=600 \
     --retries=5 \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torchaudio==2.1.0+cpu
+    torchaudio==2.2.0+cpu
 
 # Install transformers and sentence-transformers (depend on torch)
 RUN pip install --no-cache-dir --user \
