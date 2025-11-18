@@ -51,6 +51,9 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
   // Load available domains and sources, and all entries on mount
   useEffect(() => {
     const loadInitialData = async () => {
+      setIsSearching(true);
+      setError(null);
+      
       try {
         const [domainsRes, sourcesRes, allEntriesRes] = await Promise.all([
           ClinicalMemoryService.getKnowledgeDomains(),
@@ -73,9 +76,18 @@ export function KnowledgeBrowser({ className = '' }: KnowledgeBrowserProps) {
           setTotalFound(allEntriesRes.data.total_found);
           setDomains(allEntriesRes.data.domains);
           setSources(allEntriesRes.data.sources);
+        } else {
+          setError(allEntriesRes.error || 'Failed to load knowledge base');
+          setEntries([]);
+          setTotalFound(0);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error loading initial data:', err);
+        setError(err?.message || 'Failed to load knowledge base');
+        setEntries([]);
+        setTotalFound(0);
+      } finally {
+        setIsSearching(false);
       }
     };
 
@@ -666,9 +678,15 @@ function FileUploadForm({
           {availableDomains.map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
-          <option value="clinical_reference">Clinical Reference</option>
+          <option value="general">General</option>
+          <option value="pathology">Pathology</option>
+          <option value="pharmacology">Pharmacology</option>
           <option value="guidelines">Guidelines</option>
-          <option value="research">Research</option>
+          <option value="anatomy">Anatomy</option>
+          <option value="surgery">Surgery</option>
+          <option value="pediatrics">Pediatrics</option>
+          <option value="cardiology">Cardiology</option>
+          <option value="oncology">Oncology</option>
         </select>
       </div>
 

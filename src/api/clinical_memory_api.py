@@ -541,17 +541,17 @@ async def ingest_multimodal(
                         # Store summary in knowledge base if available (only if RAG succeeded)
                         if insight and insight.summary:
                             try:
-                            from src.storage.knowledge_ingestion import KnowledgeIngestionPipeline
-                            from src.storage.schema import KnowledgeBaseMetadata, EmbeddingType, AccessType
-                            from src.embeddings import BioBERTEmbeddingGenerator
-                            
-                            # Get knowledge base storage
-                            kb_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
-                            embedder = BioBERTEmbeddingGenerator()
-                            
-                            # Create summary document
-                            summary_title = f"Patient Summary - {patient_id} - {case.case_id}"
-                            summary_content = f"""Patient Summary for Case {case.case_id}
+                                from src.storage.knowledge_ingestion import KnowledgeIngestionPipeline
+                                from src.storage.schema import KnowledgeBaseMetadata, EmbeddingType, AccessType
+                                from src.embeddings import BioBERTEmbeddingGenerator
+                                
+                                # Get knowledge base storage
+                                kb_storage = get_qdrant_storage(collection_name="clinical_kb_collection")
+                                embedder = BioBERTEmbeddingGenerator()
+                                
+                                # Create summary document
+                                summary_title = f"Patient Summary - {patient_id} - {case.case_id}"
+                                summary_content = f"""Patient Summary for Case {case.case_id}
 
 Patient ID: {patient_id}
 Age Group: {age_group or 'Not specified'}
@@ -571,52 +571,60 @@ RECOMMENDATIONS:
 
 Generated: {datetime.now(timezone.utc).isoformat()}
 """
-                            
-                            # Create document data
-                            document_data = {
-                                "title": summary_title,
-                                "content": summary_content,
-                                "source": "HygiaAI Patient Summary",
-                                "author": "HygiaAI Clinical RAG",
-                                "year": datetime.now(timezone.utc).year,
-                                "provenance_url": f"https://hygiaai.local/patient-summary/{case.case_id}",
-                                "patient_id": patient_id,
-                                "case_id": case.case_id
-                            }
-                            
-                            # Create metadata
-                            kb_metadata = KnowledgeBaseMetadata(
-                                title=summary_title,
-                                source="HygiaAI Patient Summary",
-                                domain="guidelines",  # Use guidelines domain for patient summaries
-                                year=datetime.now(timezone.utc).year,
-                                embedding_type=EmbeddingType.TEXT,
-                                access_type=AccessType.RESTRICTED,  # Patient summaries are restricted
-                                provenance_url=f"https://hygiaai.local/patient-summary/{case.case_id}",
-                                author="HygiaAI Clinical RAG"
-                            )
-                            
-                            # Initialize ingestion pipeline
-                            ingestion_pipeline = KnowledgeIngestionPipeline(
-                                qdrant_storage=kb_storage,
-                                text_embedding_generator=lambda text: embedder.generate_embedding(text),
-                                chunk_size=512,
-                                chunk_overlap=50,
-                                enforce_open_access=False  # Allow patient summaries
-                            )
-                            
-                            # Ingest summary into knowledge base
-                            point_ids = ingestion_pipeline.ingest_document(
-                                document_data,
-                                metadata=kb_metadata
-                            )
-                            
-                            logger.info(f"✓ Stored patient summary in knowledge base: {len(point_ids)} chunks")
-                            
-                        except Exception as kb_storage_error:
-                            # Don't fail the request if knowledge base storage fails
-                            logger.warning(f"Failed to store patient summary in knowledge base: {kb_storage_error}")
-                            logger.debug(f"KB storage error details: {kb_storage_error}", exc_info=True)
+                                
+                                # Create document data
+                                document_data = {
+                                    "title": summary_title,
+                                    "content": summary_content,
+                                    "source": "HygiaAI Patient Summary",
+                                    "author": "HygiaAI Clinical RAG",
+                                    "year": datetime.now(timezone.utc).year,
+                                    "provenance_url": f"https://hygiaai.local/patient-summary/{case.case_id}",
+                                    "patient_id": patient_id,
+                                    "case_id": case.case_id
+                                }
+                                
+                                # Create metadata
+                                kb_metadata = KnowledgeBaseMetadata(
+                                    title=summary_title,
+                                    source="HygiaAI Patient Summary",
+                                    domain="guidelines",  # Use guidelines domain for patient summaries
+                                    year=datetime.now(timezone.utc).year,
+                                    embedding_type=EmbeddingType.TEXT,
+                                    access_type=AccessType.RESTRICTED,  # Patient summaries are restricted
+                                    provenance_url=f"https://hygiaai.local/patient-summary/{case.case_id}",
+                                    author="HygiaAI Clinical RAG"
+                                )
+                                
+                                # Initialize ingestion pipeline
+                                ingestion_pipeline = KnowledgeIngestionPipeline(
+                                    qdrant_storage=kb_storage,
+                                    text_embedding_generator=lambda text: embedder.generate_embedding(text),
+                                    chunk_size=512,
+                                    chunk_overlap=50,
+                                    enforce_open_access=False  # Allow patient summaries
+                                )
+                                
+                                # Ingest summary into knowledge base
+                                point_ids = ingestion_pipeline.ingest_document(
+                                    document_data,
+                                    metadata=kb_metadata
+                                )
+                                
+                                logger.info(f"✓ Stored patient summary in knowledge base: {len(point_ids)} chunks")
+                                
+                            except Exception as kb_storage_error:
+                                # Don't fail the request if knowledge base storage fails
+                                logger.warning(f"Failed to store patient summary in knowledge base: {kb_storage_error}")
+                                logger.debug(f"KB storage error details: {kb_storage_error}", exc_info=True)
+                    
+                    except Exception as rag_inner_error:
+                        # Handle errors in the inner try block (RAG setup/execution)
+                        logger.error(f"Error in RAG generation inner block: {rag_inner_error}", exc_info=True)
+                        rag_suggestions = {
+                            "error": "RAG generation failed",
+                            "message": str(rag_inner_error)
+                        }
                     
             except Exception as rag_error:
                 # Don't fail the entire request if RAG generation fails
@@ -1690,7 +1698,7 @@ async def upload_knowledge_file(
             "content": processed.get("content", processed.get("text", "")),
             "text": processed.get("text", processed.get("content", "")),
             "source": source or "User Upload",
-            "domain": domain or "clinical_reference",
+            "domain": domain or "general",
             "year": year or datetime.now(timezone.utc).year,
             "author": author or processed.get("metadata", {}).get("author", ""),
             "file_type": processed.get("file_type", file_ext[1:]),
@@ -1720,11 +1728,13 @@ async def upload_knowledge_file(
         embedder = BioBERTEmbeddingGenerator()
         
         # Initialize ingestion pipeline
+        # Disable license checking for manual uploads - allow any content to be uploaded
         ingestion_pipeline = KnowledgeIngestionPipeline(
             qdrant_storage=knowledge_storage,
             text_embedding_generator=lambda text: embedder.generate_embedding(text),
             chunk_size=512,
-            chunk_overlap=50
+            chunk_overlap=50,
+            enforce_open_access=False  # Bypass license validation for manual uploads
         )
         
         # Ingest document
