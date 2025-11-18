@@ -1,6 +1,25 @@
 # Multi-stage Dockerfile optimized for Railway deployment
-# Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+# Stage 1: Build frontend
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend package files
+COPY frontend/package*.json ./
+
+# Install frontend dependencies
+RUN npm ci
+
+# Copy frontend source
+COPY frontend/ .
+
+# Build frontend (use production mode)
+# Note: VITE_API_BASE_URL will be set at runtime via environment variable
+# For build time, we use a placeholder that will be replaced
+RUN npm run build
+
+# Stage 2: Build Python dependencies
+FROM python:3.11-slim AS python-builder
 
 WORKDIR /app
 
@@ -25,7 +44,7 @@ RUN pip install --no-cache-dir --user \
     pip install --no-cache-dir --user \
     -r requirements.txt
 
-# Stage 2: Runtime image
+# Stage 3: Runtime image
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -37,15 +56,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+COPY --from=python-builder /root/.local /root/.local
 
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH
 
-# Copy only necessary application files
+# Copy application files
 COPY src/ ./src/
 COPY config/ ./config/
 COPY run_server.py .
+
+# Copy built frontend from frontend-builder
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/logs /app/.cache
