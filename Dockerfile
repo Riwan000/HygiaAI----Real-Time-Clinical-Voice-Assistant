@@ -51,7 +51,7 @@ RUN pip install --no-cache-dir --user \
 RUN pip install --no-cache-dir --user \
     --default-timeout=300 \
     --retries=3 \
-    qdrant-client>=1.7.0 python-dotenv>=1.0.0
+    qdrant-client>=1.7.0 python-dotenv>=1.0.0 cryptography>=41.0.0
 
 RUN pip install --no-cache-dir --user \
     --default-timeout=300 \
