@@ -21,24 +21,34 @@ interface TimelineTrendProps {
 }
 
 export function TimelineTrend({ metrics, title = 'Patient Progress Trend', className = '' }: TimelineTrendProps) {
+  // Filter out invalid metrics
+  const validMetrics = metrics.filter((m) => 
+    m && 
+    m.date && 
+    typeof m.value === 'number' && 
+    !isNaN(m.value) &&
+    m.label &&
+    m.label.trim() !== ''
+  );
+  
   // Convert metrics to TrendDataPoint format
-  const trendData: TrendDataPoint[] = metrics.map((metric) => ({
+  const trendData: TrendDataPoint[] = validMetrics.map((metric) => ({
     date: metric.date,
     value: metric.value,
-    label: metric.label,
+    label: metric.label || 'Unknown',
     confidence_interval: {
-      lower: metric.value * 0.9, // 10% margin
+      lower: Math.max(0, metric.value * 0.9), // 10% margin, ensure non-negative
       upper: metric.value * 1.1,
     },
   }));
 
   // Calculate statistics
-  const avgValue = metrics.length > 0
-    ? metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length
+  const avgValue = validMetrics.length > 0
+    ? validMetrics.reduce((sum, m) => sum + m.value, 0) / validMetrics.length
     : 0;
-  const improvementCount = metrics.filter((m) => m.type === 'improvement').length;
-  const declineCount = metrics.filter((m) => m.type === 'decline').length;
-  const stableCount = metrics.filter((m) => m.type === 'stable').length;
+  const improvementCount = validMetrics.filter((m) => m.type === 'improvement').length;
+  const declineCount = validMetrics.filter((m) => m.type === 'decline').length;
+  const stableCount = validMetrics.filter((m) => m.type === 'stable').length;
 
   return (
     <div 
@@ -84,7 +94,12 @@ export function TimelineTrend({ metrics, title = 'Patient Progress Trend', class
         />
       ) : (
         <div className="text-center py-8 text-[#64748B] dark:text-[#94A3B8]">
-          No trend data available
+          <p>No trend data available</p>
+          <p className="text-sm mt-2">
+            {metrics.length > 0 
+              ? 'Trend metrics require outcome data. Add outcomes to cases to see trends.'
+              : 'Add cases with outcomes to see patient progress trends.'}
+          </p>
         </div>
       )}
 

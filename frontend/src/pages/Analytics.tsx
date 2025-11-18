@@ -117,12 +117,27 @@ export function Analytics() {
         setClusterData(clusters);
 
         // Generate trend data from clusters
-        const trendPoints: TrendDataPoint[] = clusters.map((cluster) => ({
-          date: cluster.time_window,
-          value: cluster.case_count,
-          label: cluster.characteristics?.diagnoses?.[0] || 'Unknown',
-        }));
+        // Always create trend points even if diagnosis is missing
+        const trendPoints: TrendDataPoint[] = clusters.map((cluster, index) => {
+          // Try multiple locations for diagnosis/label
+          const diagnosis = cluster.characteristics?.diagnoses?.[0] || 
+                          cluster.characteristics?.symptoms?.[0] ||
+                          `Cluster ${index + 1}`;
+          
+          // Ensure we have a valid label (not null/undefined/empty)
+          const label = (diagnosis && diagnosis !== 'null' && diagnosis.trim() !== '') 
+            ? diagnosis 
+            : `Cases (${cluster.case_count})`;
+          
+          return {
+            date: cluster.time_window || new Date().toISOString(),
+            value: cluster.case_count || 0,
+            label: label,
+          };
+        });
         setTrendData(trendPoints);
+        
+        console.log(`Generated ${trendPoints.length} trend points from ${clusters.length} clusters`);
       } else {
         console.warn('Clustering response not successful:', clusteringResponse);
         // Set empty arrays if no data
@@ -147,39 +162,59 @@ export function Analytics() {
           
           // Convert disease trends to heatmap data
           const diseaseTrends = analyticsResponse.data.disease_trends || [];
-          const heatmap: HeatmapData[] = diseaseTrends.map(
-            (trend: any) => ({
-              clinic: filters.region || 'Unknown',
-              disease: trend.disease || trend.disease_name || 'Unknown',
-              cases: trend.current_count || trend.current_frequency || 0,
-              severity:
-                trend.change_percentage && trend.change_percentage > 20
-                  ? 'high'
-                  : trend.change_percentage && trend.change_percentage > 10
-                  ? 'medium'
-                  : 'low',
+          const heatmap: HeatmapData[] = diseaseTrends
+            .filter((trend: any) => {
+              // Filter out invalid entries
+              const disease = trend.disease || trend.disease_name;
+              return disease && disease !== 'null' && disease.trim() !== '' && disease !== 'Unknown';
             })
-          );
+            .map((trend: any) => {
+              const disease = trend.disease || trend.disease_name || 'Unspecified';
+              const cases = trend.current_count || trend.current_frequency || 0;
+              const changePercent = trend.change_percentage || 0;
+              
+              return {
+                clinic: filters.region || 'Unknown',
+                disease: disease,
+                cases: cases,
+                severity:
+                  changePercent > 20
+                    ? 'high'
+                    : changePercent > 10
+                    ? 'medium'
+                    : 'low',
+              };
+            });
           setHeatmapData(heatmap);
+          
+          console.log(`Generated ${heatmap.length} heatmap entries from ${diseaseTrends.length} disease trends`);
 
           // Set outbreak alerts
           const outbreakAlerts = analyticsResponse.data.outbreak_alerts || [];
-          const alerts: OutbreakAlertData[] = outbreakAlerts.map(
-            (alert: any) => ({
-              disease: alert.disease || alert.disease_name || 'Unknown',
+          const alerts: OutbreakAlertData[] = outbreakAlerts
+            .filter((alert: any) => {
+              // Filter out invalid alerts
+              const disease = alert.disease || alert.disease_name;
+              return disease && disease !== 'null' && disease.trim() !== '' && disease !== 'Unknown';
+            })
+            .map((alert: any) => ({
+              disease: alert.disease || alert.disease_name || 'Unspecified',
               severity: alert.severity || alert.level || 'low',
               cases: alert.cases || alert.case_count || 0,
               recommendation: alert.recommendation || alert.message || 'Monitor closely',
-              region: filters.region,
-            })
-          );
+              region: filters.region || 'Unknown',
+            }));
           setOutbreakAlerts(alerts);
+          
+          console.log(`Generated ${alerts.length} outbreak alerts from ${outbreakAlerts.length} raw alerts`);
 
-          // Extract available diseases
-          const diseases = diseaseTrends.map(
-            (trend: any) => trend.disease || trend.disease_name
-          ).filter(Boolean);
+          // Extract available diseases (filter out invalid ones)
+          const diseases = diseaseTrends
+            .map((trend: any) => trend.disease || trend.disease_name)
+            .filter((d: string) => d && d !== 'null' && d.trim() !== '' && d !== 'Unknown');
           setAvailableDiseases([...new Set(diseases)]);
+          
+          console.log(`Found ${diseases.length} unique diseases`);
         } else {
           console.warn('Regional analytics response not successful:', analyticsResponse);
           // Set empty arrays if no data

@@ -202,17 +202,19 @@ export function Timeline() {
               },
             });
 
-            // Add trend metric
-            metrics.push({
-              date: timestamp,
-              value: outcome.toLowerCase().includes('recovered') ? 90 : outcome.toLowerCase().includes('improved') ? 70 : 50,
-              label: outcome,
-              type: outcome.toLowerCase().includes('recovered') || outcome.toLowerCase().includes('improved')
-                ? 'improvement'
-                : outcome.toLowerCase().includes('declined') || outcome.toLowerCase().includes('worse')
-                ? 'decline'
-                : 'stable',
-            });
+            // Add trend metric (only if outcome is meaningful)
+            if (outcome && outcome !== 'Pending' && outcome !== 'null' && outcome.trim() !== '') {
+              metrics.push({
+                date: timestamp,
+                value: outcome.toLowerCase().includes('recovered') ? 90 : outcome.toLowerCase().includes('improved') ? 70 : 50,
+                label: outcome,
+                type: outcome.toLowerCase().includes('recovered') || outcome.toLowerCase().includes('improved')
+                  ? 'improvement'
+                  : outcome.toLowerCase().includes('declined') || outcome.toLowerCase().includes('worse')
+                  ? 'decline'
+                  : 'stable',
+              });
+            }
           }
 
           // Create outcome event if available
@@ -252,9 +254,15 @@ export function Timeline() {
         });
 
         console.log(`Created ${events.length} timeline events from ${patientCases.length} cases`);
+        console.log(`Created ${metrics.length} trend metrics`);
 
         setTimelineEvents(events);
         setTrendMetrics(metrics);
+        
+        // Clear error if we have events
+        if (events.length > 0) {
+          setError(null);
+        }
       } else {
         setError('No cases found for this patient');
       }
